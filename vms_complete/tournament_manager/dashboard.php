@@ -252,7 +252,7 @@ $person_id = (int)$_SESSION['user']['person_id'];
   <!-- MATCHES VIEW -->
   <section class="content-view" id="matches-view">
     <div class="view-header">
-      <button class="btn btn-primary" onclick="showMatchModal()">
+      <button class="btn btn-primary" onclick="showScheduleMatchModal()">
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
           <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
         </svg>
@@ -271,6 +271,7 @@ $person_id = (int)$_SESSION['user']['person_id'];
       <table class="table" id="matchesTable">
         <thead>
           <tr>
+            <th>Game No.</th>
             <th>Date</th>
             <th>Time</th>
             <th>Sport</th>
@@ -278,11 +279,11 @@ $person_id = (int)$_SESSION['user']['person_id'];
             <th>Team A</th>
             <th>Team B</th>
             <th>Venue</th>
-            <th>Winner</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr><td colspan="8" class="loading">Loading matches...</td></tr>
+          <tr><td colspan="9" class="loading">Loading matches...</td></tr>
         </tbody>
       </table>
     </div>

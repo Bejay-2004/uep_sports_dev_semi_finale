@@ -19,6 +19,6 @@ if (isset($_COOKIE[session_name()])) {
 // Destroy the session
 session_destroy();
 
-// Redirect to login page
-header("Location: " . BASE_URL . "/auth/login.php?logout=success");
+// Redirect to landing page (index.php) instead of login
+header("Location: " . BASE_URL . "/index.php?logout=success");
 exit;

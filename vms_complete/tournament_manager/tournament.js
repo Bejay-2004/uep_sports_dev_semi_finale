@@ -717,20 +717,24 @@ async function loadMatches(filterTourId = null) {
     if (!tbody) return;
     
     if (!Array.isArray(data) || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matches found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No matches found</td></tr>';
       return;
     }
     
     tbody.innerHTML = data.map(m => `
       <tr>
+        <td>${escapeHtml(m.game_no)}</td>
         <td>${m.sked_date}</td>
         <td>${m.sked_time}</td>
         <td>${escapeHtml(m.sports_name)}</td>
         <td>${escapeHtml(m.match_type)}</td>
-        <td>${escapeHtml(m.team_a_name)}</td>
-        <td>${escapeHtml(m.team_b_name)}</td>
+        <td>${escapeHtml(m.team_a_name || 'TBA')}</td>
+        <td>${escapeHtml(m.team_b_name || 'TBA')}</td>
         <td>${escapeHtml(m.venue_name || 'TBA')}</td>
-        <td>${m.winner_name ? '<strong>' + escapeHtml(m.winner_name) + '</strong>' : '-'}</td>
+        <td>
+          <button class="btn btn-sm" onclick="editMatch(${m.match_id})">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteMatch(${m.match_id})">Delete</button>
+        </td>
       </tr>
     `).join('');
     
@@ -739,6 +743,517 @@ async function loadMatches(filterTourId = null) {
     console.log('✅ Matches loaded:', data.length);
   } catch (err) {
     console.error('❌ loadMatches error:', err);
+  }
+}
+
+function showScheduleMatchModal() {
+  const modalHTML = `
+    <div class="modal active" id="scheduleMatchModal">
+      <div class="modal-content wide">
+        <div class="modal-header">
+          <h3>Schedule New Match</h3>
+          <button class="modal-close" onclick="closeScheduleMatchModal()">×</button>
+        </div>
+        <form id="scheduleMatchForm" onsubmit="saveScheduleMatch(event)">
+          <div class="modal-body">
+            <div class="form" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+              
+              <!-- Tournament Selection -->
+              <div class="form-group">
+                <label class="form-label">Tournament *</label>
+                <select class="form-control" id="schedule_tour_id" required onchange="onScheduleTournamentChange()">
+                  <option value="">-- Select Tournament --</option>
+                </select>
+              </div>
+
+              <!-- Sport Selection -->
+              <div class="form-group">
+                <label class="form-label">Sport *</label>
+                <select class="form-control" id="schedule_sports_id" required onchange="onScheduleSportChange()">
+                  <option value="">-- Select Sport --</option>
+                </select>
+              </div>
+
+              <!-- Game Number -->
+              <div class="form-group">
+                <label class="form-label">Game Number *</label>
+                <input type="text" class="form-control" id="schedule_game_no" placeholder="e.g., G001" required>
+              </div>
+
+              <!-- Match Type -->
+              <div class="form-group">
+                <label class="form-label">Match Type *</label>
+                <select class="form-control" id="schedule_match_type" required>
+                  <option value="">-- Select Type --</option>
+                  <option value="EL">Elimination (EL)</option>
+                  <option value="QF">Quarter Final (QF)</option>
+                  <option value="SF">Semi Final (SF)</option>
+                  <option value="F">Final (F)</option>
+                </select>
+              </div>
+
+              <!-- Date -->
+              <div class="form-group">
+                <label class="form-label">Match Date *</label>
+                <input type="date" class="form-control" id="schedule_sked_date" required>
+              </div>
+
+              <!-- Time -->
+              <div class="form-group">
+                <label class="form-label">Match Time *</label>
+                <input type="time" class="form-control" id="schedule_sked_time" required>
+              </div>
+
+              <!-- Venue -->
+              <div class="form-group">
+                <label class="form-label">Venue</label>
+                <select class="form-control" id="schedule_venue_id">
+                  <option value="">-- Select Venue --</option>
+                </select>
+              </div>
+
+              <!-- Umpire -->
+              <div class="form-group">
+                <label class="form-label">Umpire</label>
+                <select class="form-control" id="schedule_umpire_id">
+                  <option value="">-- Select Umpire --</option>
+                </select>
+              </div>
+
+              <!-- Sports Manager -->
+              <div class="form-group" style="grid-column: span 2;">
+                <label class="form-label">Sports Manager</label>
+                <select class="form-control" id="schedule_sports_manager_id">
+                  <option value="">-- Select Sports Manager --</option>
+                </select>
+              </div>
+
+              <!-- Teams Section (shown for team sports) -->
+              <div id="teamsSection" style="grid-column: span 2; display:none;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                  <div class="form-group">
+                    <label class="form-label">Team A *</label>
+                    <select class="form-control" id="schedule_team_a_id">
+                      <option value="">-- Select Team A --</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="form-label">Team B *</label>
+                    <select class="form-control" id="schedule_team_b_id">
+                      <option value="">-- Select Team B --</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sports Type (hidden field) -->
+              <input type="hidden" id="schedule_sports_type" value="">
+
+            </div>
+            <div id="scheduleMsg" class="msg" style="display:none;"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeScheduleMatchModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Schedule Match</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  
+  $('#modalContainer').innerHTML = modalHTML;
+  
+  // Load initial data
+  loadScheduleMatchData();
+}
+
+async function loadScheduleMatchData() {
+  try {
+    // Load tournaments
+    const tournaments = await fetchJSON('tournaments');
+    const activeTournaments = tournaments.filter(t => t.is_active == 1);
+    const tourSelect = $('#schedule_tour_id');
+    tourSelect.innerHTML = '<option value="">-- Select Tournament --</option>' + 
+      activeTournaments.map(t => `<option value="${t.tour_id}">${escapeHtml(t.tour_name)} (${t.school_year})</option>`).join('');
+
+    // Load venues
+    const venues = await fetchJSON('venues');
+    const activeVenues = venues.filter(v => v.is_active == 1);
+    const venueSelect = $('#schedule_venue_id');
+    venueSelect.innerHTML = '<option value="">-- Select Venue --</option>' + 
+      activeVenues.map(v => `<option value="${v.venue_id}">${escapeHtml(v.venue_name)}</option>`).join('');
+
+    // Load umpires
+    const umpires = await fetchJSON('umpires');
+    const umpireSelect = $('#schedule_umpire_id');
+    umpireSelect.innerHTML = '<option value="">-- Select Umpire --</option>' + 
+      umpires.map(u => `<option value="${u.person_id}">${escapeHtml(u.full_name)}</option>`).join('');
+
+    // Load sports managers
+    const managers = await fetchJSON('sports_managers');
+    const managerSelect = $('#schedule_sports_manager_id');
+    managerSelect.innerHTML = '<option value="">-- Select Sports Manager --</option>' + 
+      managers.map(m => `<option value="${m.person_id}">${escapeHtml(m.full_name)}</option>`).join('');
+
+  } catch (err) {
+    console.error('❌ Error loading schedule match data:', err);
+  }
+}
+
+async function onScheduleTournamentChange() {
+  const tourId = $('#schedule_tour_id').value;
+  const sportsSelect = $('#schedule_sports_id');
+  
+  if (!tourId) {
+    sportsSelect.innerHTML = '<option value="">-- Select Sport --</option>';
+    $('#teamsSection').style.display = 'none';
+    return;
+  }
+
+  try {
+    // Load sports for selected tournament
+    const sports = await fetchJSON(`tournament_sports&tour_id=${tourId}`);
+    sportsSelect.innerHTML = '<option value="">-- Select Sport --</option>' + 
+      sports.map(s => `<option value="${s.sports_id}" data-type="${s.team_individual}">${escapeHtml(s.sports_name)}</option>`).join('');
+  } catch (err) {
+    console.error('❌ Error loading sports:', err);
+  }
+}
+
+async function onScheduleSportChange() {
+  const tourId = $('#schedule_tour_id').value;
+  const sportsSelect = $('#schedule_sports_id');
+  const selectedOption = sportsSelect.selectedOptions[0];
+  const teamsSection = $('#teamsSection');
+  
+  if (!selectedOption || !selectedOption.value) {
+    teamsSection.style.display = 'none';
+    return;
+  }
+
+  const sportsType = selectedOption.dataset.type; // 'team' or 'individual'
+  $('#schedule_sports_type').value = sportsType;
+
+  if (sportsType === 'team') {
+    teamsSection.style.display = 'block';
+    
+    // Load teams for this sport
+    try {
+      const teams = await fetchJSON(`tournament_teams_by_sport&tour_id=${tourId}&sports_id=${selectedOption.value}`);
+      const teamASelect = $('#schedule_team_a_id');
+      const teamBSelect = $('#schedule_team_b_id');
+      
+      const teamOptions = '<option value="">-- Select Team --</option>' + 
+        teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+      
+      teamASelect.innerHTML = teamOptions;
+      teamBSelect.innerHTML = teamOptions;
+      
+      // Make teams required for team sports
+      teamASelect.required = true;
+      teamBSelect.required = true;
+    } catch (err) {
+      console.error('❌ Error loading teams:', err);
+    }
+  } else {
+    teamsSection.style.display = 'none';
+    $('#schedule_team_a_id').required = false;
+    $('#schedule_team_b_id').required = false;
+  }
+}
+
+async function saveScheduleMatch(event) {
+  event.preventDefault();
+  const msg = $('#scheduleMsg');
+  msg.style.display = 'block';
+  msg.textContent = 'Scheduling match...';
+  msg.style.color = '#6b7280';
+
+  try {
+    const formData = new URLSearchParams();
+    formData.set('tour_id', $('#schedule_tour_id').value);
+    formData.set('sports_id', $('#schedule_sports_id').value);
+    formData.set('game_no', $('#schedule_game_no').value);
+    formData.set('sked_date', $('#schedule_sked_date').value);
+    formData.set('sked_time', $('#schedule_sked_time').value);
+    formData.set('venue_id', $('#schedule_venue_id').value || '0');
+    formData.set('match_umpire_id', $('#schedule_umpire_id').value || '0');
+    formData.set('match_sports_manager_id', $('#schedule_sports_manager_id').value || '0');
+    formData.set('match_type', $('#schedule_match_type').value);
+    formData.set('sports_type', $('#schedule_sports_type').value);
+    formData.set('team_a_id', $('#schedule_team_a_id').value || '');
+    formData.set('team_b_id', $('#schedule_team_b_id').value || '');
+
+    const data = await fetchJSON('create_match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
+    });
+
+    msg.textContent = data.message || 'Match scheduled!';
+    msg.style.color = data.ok ? 'green' : 'red';
+    
+    if (data.ok) {
+      setTimeout(() => {
+        closeScheduleMatchModal();
+        loadMatches();
+      }, 1000);
+    }
+  } catch (err) {
+    console.error('❌ Schedule match error:', err);
+    msg.textContent = 'Error scheduling match';
+    msg.style.color = 'red';
+  }
+}
+
+function closeScheduleMatchModal() {
+  const modal = $('#scheduleMatchModal');
+  if (modal) modal.remove();
+}
+
+async function editMatch(matchId) {
+  try {
+    // Get match details
+    const matches = await fetchJSON('matches');
+    const match = matches.find(m => m.match_id === matchId);
+    
+    if (!match) {
+      alert('Match not found');
+      return;
+    }
+
+    const modalHTML = `
+      <div class="modal active" id="editMatchModal">
+        <div class="modal-content wide">
+          <div class="modal-header">
+            <h3>Edit Match</h3>
+            <button class="modal-close" onclick="closeEditMatchModal()">×</button>
+          </div>
+          <form id="editMatchForm" onsubmit="saveEditMatch(event)">
+            <input type="hidden" id="edit_match_id" value="${match.match_id}">
+            <input type="hidden" id="edit_sports_type" value="${match.sports_type}">
+            <div class="modal-body">
+              <div class="form" style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                
+                <!-- Game Number -->
+                <div class="form-group">
+                  <label class="form-label">Game Number *</label>
+                  <input type="text" class="form-control" id="edit_game_no" value="${escapeHtml(match.game_no)}" required>
+                </div>
+
+                <!-- Match Type -->
+                <div class="form-group">
+                  <label class="form-label">Match Type *</label>
+                  <select class="form-control" id="edit_match_type" required>
+                    <option value="EL" ${match.match_type === 'EL' ? 'selected' : ''}>Elimination (EL)</option>
+                    <option value="QF" ${match.match_type === 'QF' ? 'selected' : ''}>Quarter Final (QF)</option>
+                    <option value="SF" ${match.match_type === 'SF' ? 'selected' : ''}>Semi Final (SF)</option>
+                    <option value="F" ${match.match_type === 'F' ? 'selected' : ''}>Final (F)</option>
+                  </select>
+                </div>
+
+                <!-- Date -->
+                <div class="form-group">
+                  <label class="form-label">Match Date *</label>
+                  <input type="date" class="form-control" id="edit_sked_date" value="${match.sked_date}" required>
+                </div>
+
+                <!-- Time -->
+                <div class="form-group">
+                  <label class="form-label">Match Time *</label>
+                  <input type="time" class="form-control" id="edit_sked_time" value="${match.sked_time}" required>
+                </div>
+
+                <!-- Venue -->
+                <div class="form-group">
+                  <label class="form-label">Venue</label>
+                  <select class="form-control" id="edit_venue_id">
+                    <option value="">-- Select Venue --</option>
+                  </select>
+                </div>
+
+                <!-- Umpire -->
+                <div class="form-group">
+                  <label class="form-label">Umpire</label>
+                  <select class="form-control" id="edit_umpire_id">
+                    <option value="">-- Select Umpire --</option>
+                  </select>
+                </div>
+
+                <!-- Sports Manager -->
+                <div class="form-group" style="grid-column: span 2;">
+                  <label class="form-label">Sports Manager</label>
+                  <select class="form-control" id="edit_sports_manager_id">
+                    <option value="">-- Select Sports Manager --</option>
+                  </select>
+                </div>
+
+                <!-- Teams Section (shown for team sports) -->
+                ${match.sports_type === 'team' ? `
+                  <div style="grid-column: span 2;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+                      <div class="form-group">
+                        <label class="form-label">Team A *</label>
+                        <select class="form-control" id="edit_team_a_id" required>
+                          <option value="">-- Select Team A --</option>
+                        </select>
+                      </div>
+
+                      <div class="form-group">
+                        <label class="form-label">Team B *</label>
+                        <select class="form-control" id="edit_team_b_id" required>
+                          <option value="">-- Select Team B --</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ` : ''}
+
+              </div>
+              <div id="editMatchMsg" class="msg" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" onclick="closeEditMatchModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary">Update Match</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+    
+    $('#modalContainer').innerHTML = modalHTML;
+    
+    // Load dropdowns
+    await loadEditMatchData(match);
+    
+  } catch (err) {
+    console.error('❌ Error editing match:', err);
+    alert('Error loading match details');
+  }
+}
+
+async function loadEditMatchData(match) {
+  try {
+    // Load venues
+    const venues = await fetchJSON('venues');
+    const activeVenues = venues.filter(v => v.is_active == 1);
+    const venueSelect = $('#edit_venue_id');
+    venueSelect.innerHTML = '<option value="">-- Select Venue --</option>' + 
+      activeVenues.map(v => `<option value="${v.venue_id}" ${v.venue_id == match.venue_id ? 'selected' : ''}>${escapeHtml(v.venue_name)}</option>`).join('');
+
+    // Load umpires
+    const umpires = await fetchJSON('umpires');
+    const umpireSelect = $('#edit_umpire_id');
+    umpireSelect.innerHTML = '<option value="">-- Select Umpire --</option>' + 
+      umpires.map(u => `<option value="${u.person_id}" ${u.person_id == match.match_umpire_id ? 'selected' : ''}>${escapeHtml(u.full_name)}</option>`).join('');
+
+    // Load sports managers
+    const managers = await fetchJSON('sports_managers');
+    const managerSelect = $('#edit_sports_manager_id');
+    managerSelect.innerHTML = '<option value="">-- Select Sports Manager --</option>' + 
+      managers.map(m => `<option value="${m.person_id}" ${m.person_id == match.match_sports_manager_id ? 'selected' : ''}>${escapeHtml(m.full_name)}</option>`).join('');
+
+    // Load teams if team sport
+    if (match.sports_type === 'team') {
+      const teams = await fetchJSON(`tournament_teams_by_sport&tour_id=${match.tour_id}&sports_id=${match.sports_id}`);
+      const teamOptions = '<option value="">-- Select Team --</option>' + 
+        teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+      
+      const teamASelect = $('#edit_team_a_id');
+      const teamBSelect = $('#edit_team_b_id');
+      
+      teamASelect.innerHTML = teamOptions;
+      teamBSelect.innerHTML = teamOptions;
+      
+      // Set selected teams
+      teamASelect.value = match.team_a_id || '';
+      teamBSelect.value = match.team_b_id || '';
+    }
+
+  } catch (err) {
+    console.error('❌ Error loading edit match data:', err);
+  }
+}
+
+async function saveEditMatch(event) {
+  event.preventDefault();
+  const msg = $('#editMatchMsg');
+  msg.style.display = 'block';
+  msg.textContent = 'Updating match...';
+  msg.style.color = '#6b7280';
+
+  try {
+    const formData = new URLSearchParams();
+    formData.set('match_id', $('#edit_match_id').value);
+    formData.set('game_no', $('#edit_game_no').value);
+    formData.set('sked_date', $('#edit_sked_date').value);
+    formData.set('sked_time', $('#edit_sked_time').value);
+    formData.set('venue_id', $('#edit_venue_id').value || '0');
+    formData.set('match_umpire_id', $('#edit_umpire_id').value || '0');
+    formData.set('match_sports_manager_id', $('#edit_sports_manager_id').value || '0');
+    formData.set('match_type', $('#edit_match_type').value);
+    
+    const sportsType = $('#edit_sports_type').value;
+    if (sportsType === 'team') {
+      formData.set('team_a_id', $('#edit_team_a_id').value || '');
+      formData.set('team_b_id', $('#edit_team_b_id').value || '');
+    } else {
+      formData.set('team_a_id', '');
+      formData.set('team_b_id', '');
+    }
+
+    const data = await fetchJSON('update_match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
+    });
+
+    msg.textContent = data.message || 'Match updated!';
+    msg.style.color = data.ok ? 'green' : 'red';
+    
+    if (data.ok) {
+      setTimeout(() => {
+        closeEditMatchModal();
+        loadMatches();
+      }, 1000);
+    }
+  } catch (err) {
+    console.error('❌ Update match error:', err);
+    msg.textContent = 'Error updating match';
+    msg.style.color = 'red';
+  }
+}
+
+function closeEditMatchModal() {
+  const modal = $('#editMatchModal');
+  if (modal) modal.remove();
+}
+
+async function deleteMatch(matchId) {
+  if (!confirm('Are you sure you want to delete this match? This will also delete associated scores.')) {
+    return;
+  }
+
+  try {
+    const formData = new URLSearchParams();
+    formData.set('match_id', matchId);
+
+    const data = await fetchJSON('delete_match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString()
+    });
+
+    if (data.ok) {
+      alert('Match deleted successfully');
+      await loadMatches();
+    } else {
+      alert(data.message || 'Failed to delete match');
+    }
+  } catch (err) {
+    console.error('❌ Delete match error:', err);
+    alert('Error deleting match');
   }
 }
 
@@ -1101,6 +1616,21 @@ async function toggleVenue(venueId, currentStatus) {
 // PRINT FUNCTIONALITY
 // ==========================================
 
+// ==========================================
+// COMPLETE PRINT FUNCTIONALITY
+// Replace the print section in tournament.js (lines ~1615-1653)
+// ==========================================
+
+// ==========================================
+// FIXED PRINT FUNCTIONALITY WITH DEBUGGING
+// Replace the print section in tournament.js
+// ==========================================
+
+// ==========================================
+// PLAIN TEXT FORMAL PRINT FUNCTIONALITY
+// Replace the print section in tournament.js
+// ==========================================
+
 function openPrintModal() {
   const modal = $('#printModal');
   modal.classList.add('active');
@@ -1128,13 +1658,716 @@ $('#printTourSelect')?.addEventListener('change', function() {
 });
 
 async function generatePrintReport() {
-  alert('Print report generation - uses existing code from original tournament.js');
-  closePrintModal();
+  const tourId = $('#printTourSelect').value;
+  
+  if (!tourId) {
+    alert('Please select a tournament');
+    return;
+  }
+
+  const generateBtn = $('#generatePrintBtn');
+  generateBtn.disabled = true;
+  generateBtn.textContent = 'Generating...';
+
+  try {
+    console.log('🔍 Starting report generation for tournament:', tourId);
+
+    // Get selected options
+    const options = {
+      overview: $('#print_overview')?.checked || false,
+      sports: $('#print_sports')?.checked || false,
+      teams: $('#print_teams')?.checked || false,
+      players: $('#print_players')?.checked || false,
+      coaches: $('#print_coaches')?.checked || false,
+      matches: $('#print_matches')?.checked || false,
+      results: $('#print_results')?.checked || false,
+      standings: $('#print_standings')?.checked || false,
+      medals: $('#print_medals')?.checked || false,
+      officials: $('#print_officials')?.checked || false
+    };
+
+    // Get tournament data from dropdown
+    const selectedOption = $('#printTourSelect').selectedOptions[0];
+    const tourName = selectedOption.dataset.tourName || selectedOption.text;
+    const schoolYear = selectedOption.dataset.schoolYear || '';
+    const tourDate = selectedOption.dataset.tourDate || '';
+
+    // Fetch data with error handling
+    let sports = [];
+    let teams = [];
+    let matches = [];
+    let scores = [];
+    let standings = [];
+    let medals = [];
+    let venues = [];
+    let umpires = [];
+    let managers = [];
+
+    // Fetch sports if needed
+    if (options.sports || options.teams || options.players || options.coaches) {
+      try {
+        sports = await fetchJSON(`tournament_sports&tour_id=${tourId}`);
+        console.log('✅ Sports fetched:', sports.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching sports:', err);
+        sports = [];
+      }
+    }
+
+    // Fetch teams if needed
+    if (options.teams || options.players || options.coaches) {
+      try {
+        teams = await fetchJSON(`tournament_teams&tour_id=${tourId}`);
+        console.log('✅ Teams fetched:', teams.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching teams:', err);
+        teams = [];
+      }
+    }
+
+    // Fetch matches if needed
+    if (options.matches || options.results) {
+      try {
+        matches = await fetchJSON(`matches&tour_id=${tourId}`);
+        console.log('✅ Matches fetched:', matches.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching matches:', err);
+        matches = [];
+      }
+    }
+
+    // Fetch scores if needed
+    if (options.results) {
+      try {
+        const allScores = await fetchJSON('scores');
+        const matchIds = matches.map(m => m.match_id);
+        scores = allScores.filter(s => matchIds.includes(s.match_id));
+        console.log('✅ Scores fetched:', scores.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching scores:', err);
+        scores = [];
+      }
+    }
+
+    // Fetch standings if needed
+    if (options.standings) {
+      try {
+        standings = await fetchJSON(`standings&tour_id=${tourId}`);
+        console.log('✅ Standings fetched:', standings.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching standings:', err);
+        standings = [];
+      }
+    }
+
+    // Fetch medals if needed
+    if (options.medals) {
+      try {
+        medals = await fetchJSON(`medal_tally&tour_id=${tourId}`);
+        console.log('✅ Medals fetched:', medals.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching medals:', err);
+        medals = [];
+      }
+    }
+
+    // Fetch venues
+    try {
+      venues = await fetchJSON('venues');
+      console.log('✅ Venues fetched:', venues.length);
+    } catch (err) {
+      console.warn('⚠️ Error fetching venues:', err);
+      venues = [];
+    }
+
+    // Fetch umpires if needed
+    if (options.officials) {
+      try {
+        umpires = await fetchJSON('umpires');
+        console.log('✅ Umpires fetched:', umpires.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching umpires:', err);
+        umpires = [];
+      }
+    }
+
+    // Fetch sports managers if needed
+    if (options.officials) {
+      try {
+        managers = await fetchJSON('sports_managers');
+        console.log('✅ Managers fetched:', managers.length);
+      } catch (err) {
+        console.warn('⚠️ Error fetching managers:', err);
+        managers = [];
+      }
+    }
+
+    console.log('📊 Data fetching complete. Generating HTML...');
+
+    // Generate the report HTML
+    const reportHTML = generatePlainTextReport(tourName, schoolYear, tourDate, options, {
+      sports, teams, matches, scores, standings, medals, venues, umpires, managers, tourId
+    });
+
+    console.log('✅ HTML generated successfully');
+
+    // Display preview
+    const preview = $('#printPreview');
+    preview.innerHTML = reportHTML;
+    preview.style.display = 'block';
+    
+    // Close modal
+    closePrintModal();
+    
+    // Scroll to preview
+    preview.scrollIntoView({ behavior: 'smooth' });
+    
+    console.log('✅ Report generated successfully!');
+    
+    // Auto-print prompt
+    setTimeout(() => {
+      if (confirm('Report generated! Would you like to print now?')) {
+        printReport();
+      }
+    }, 500);
+
+  } catch (err) {
+    console.error('❌ PRINT GENERATION ERROR:', err);
+    alert('Error generating report: ' + err.message + '\n\nCheck the browser console (F12) for details.');
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = 'Generate Report';
+  }
+}
+
+function generatePlainTextReport(tourName, schoolYear, tourDate, options, data) {
+  const { sports, teams, matches, scores, standings, medals, venues, umpires, managers, tourId } = data;
+  
+  const currentDate = new Date().toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  
+  let html = `
+    <div id="printableReport" style="max-width:850px;margin:40px auto;background:white;padding:60px;font-family:'Courier New',monospace;font-size:12px;line-height:1.8;color:#000;">
+      
+      <!-- Header -->
+      <div style="text-align:center;margin-bottom:50px;border-bottom:2px solid #000;padding-bottom:30px;">
+        <div style="font-size:24px;font-weight:bold;letter-spacing:2px;margin-bottom:15px;">TOURNAMENT REPORT</div>
+        <div style="font-size:18px;font-weight:bold;margin-bottom:10px;">${escapeHtml(tourName).toUpperCase()}</div>
+        <div style="margin-top:10px;">School Year: ${escapeHtml(schoolYear)}</div>
+        <div>Tournament Date: ${formatDatePlain(tourDate)}</div>
+      </div>
+
+      ${options.overview ? generatePlainOverview(tourName, schoolYear, tourDate, sports, teams, matches) : ''}
+      ${options.sports ? generatePlainSports(sports) : ''}
+      ${options.teams ? generatePlainTeams(teams, sports) : ''}
+      ${options.coaches ? generatePlainCoaches(teams) : ''}
+      ${options.matches ? generatePlainMatches(matches, venues) : ''}
+      ${options.results ? generatePlainResults(scores, matches) : ''}
+      ${options.standings ? generatePlainStandings(standings) : ''}
+      ${options.medals ? generatePlainMedals(medals) : ''}
+      ${options.officials ? generatePlainOfficials(umpires, managers) : ''}
+
+      <!-- Footer -->
+      <div style="margin-top:80px;padding-top:20px;border-top:2px solid #000;text-align:center;font-size:10px;">
+        <div>This report was generated on ${currentDate}</div>
+        <div style="margin-top:5px;">Tournament Management System</div>
+      </div>
+    </div>
+
+    <!-- Print Controls -->
+    <div style="position:fixed;top:20px;right:20px;z-index:10000;display:flex;gap:10px;background:white;padding:10px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);" class="no-print">
+      <button onclick="printReport()" style="padding:12px 24px;background:#111827;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;font-family:sans-serif;">
+        Print Report
+      </button>
+      <button onclick="closePreview()" style="padding:12px 24px;background:#dc2626;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;font-family:sans-serif;">
+        Close
+      </button>
+    </div>
+  `;
+  
+  return html;
+}
+
+function generatePlainOverview(tourName, schoolYear, tourDate, sports, teams, matches) {
+  const uniqueTeams = teams.length > 0 ? [...new Set(teams.map(t => t.team_id))].length : 0;
+  const totalMatches = matches.length;
+  
+  return `
+    <div style="margin-bottom:50px;page-break-after:avoid;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">I. TOURNAMENT OVERVIEW</div>
+      
+      <div style="margin-left:20px;">
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">Tournament Name:</span>
+          <span style="font-weight:bold;">${escapeHtml(tourName)}</span>
+        </div>
+        
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">School Year:</span>
+          <span style="font-weight:bold;">${escapeHtml(schoolYear)}</span>
+        </div>
+        
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">Tournament Date:</span>
+          <span style="font-weight:bold;">${formatDatePlain(tourDate)}</span>
+        </div>
+        
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">Number of Sports:</span>
+          <span style="font-weight:bold;">${sports.length}</span>
+        </div>
+        
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">Participating Teams:</span>
+          <span style="font-weight:bold;">${uniqueTeams}</span>
+        </div>
+        
+        <div style="margin-bottom:10px;">
+          <span style="display:inline-block;width:200px;">Total Matches:</span>
+          <span style="font-weight:bold;">${totalMatches}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function generatePlainSports(sports) {
+  if (!sports || sports.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">II. SPORTS AND CATEGORIES</div>
+        <div style="margin-left:20px;font-style:italic;">No sports registered for this tournament.</div>
+      </div>
+    `;
+  }
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-inside:avoid;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">II. SPORTS AND CATEGORIES</div>
+      <div style="margin-left:20px;">
+  `;
+
+  sports.forEach((sport, index) => {
+    html += `
+      <div style="margin-bottom:15px;">
+        <div style="font-weight:bold;">${index + 1}. ${escapeHtml(sport.sports_name)}</div>
+        <div style="margin-left:20px;margin-top:5px;">
+          Type: ${sport.team_individual === 'team' ? 'Team Sport' : 'Individual Sport'}
+          ${sport.men_women ? ` | Category: ${escapeHtml(sport.men_women)}` : ''}
+          ${sport.weight_class ? ` | Weight Class: ${escapeHtml(sport.weight_class)}` : ''}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+function generatePlainTeams(teams, sports) {
+  if (!teams || teams.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">III. PARTICIPATING TEAMS</div>
+        <div style="margin-left:20px;font-style:italic;">No teams registered for this tournament.</div>
+      </div>
+    `;
+  }
+
+  // Group teams by sport
+  const teamsBySport = {};
+  teams.forEach(team => {
+    const sportName = team.sports_name || 'Other';
+    if (!teamsBySport[sportName]) {
+      teamsBySport[sportName] = [];
+    }
+    if (!teamsBySport[sportName].find(t => t.team_id === team.team_id)) {
+      teamsBySport[sportName].push(team);
+    }
+  });
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-inside:avoid;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">III. PARTICIPATING TEAMS</div>
+  `;
+
+  Object.keys(teamsBySport).sort().forEach(sportName => {
+    const sportTeams = teamsBySport[sportName];
+    
+    html += `
+      <div style="margin-bottom:25px;margin-left:20px;">
+        <div style="font-weight:bold;margin-bottom:10px;">${escapeHtml(sportName)} (${sportTeams.length} team${sportTeams.length !== 1 ? 's' : ''})</div>
+        <div style="margin-left:20px;">
+    `;
+
+    sportTeams.forEach((team, idx) => {
+      html += `
+        <div style="margin-bottom:5px;">
+          ${idx + 1}. ${escapeHtml(team.team_name)}${team.coach_name ? ' - Coach: ' + escapeHtml(team.coach_name) : ''}
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function generatePlainCoaches(teams) {
+  if (!teams || teams.length === 0) return '';
+
+  const coaches = teams.filter(t => t.coach_name).map(t => ({
+    team: t.team_name,
+    coach: t.coach_name,
+    sport: t.sports_name
+  }));
+
+  if (coaches.length === 0) return '';
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-inside:avoid;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">IV. COACHES AND TEAM OFFICIALS</div>
+      <div style="margin-left:20px;">
+  `;
+
+  coaches.forEach((c, idx) => {
+    html += `
+      <div style="margin-bottom:8px;">
+        ${idx + 1}. ${escapeHtml(c.team)} (${escapeHtml(c.sport)}) - ${escapeHtml(c.coach)}
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+function generatePlainMatches(matches, venues) {
+  if (!matches || matches.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">V. MATCH SCHEDULE</div>
+        <div style="margin-left:20px;font-style:italic;">No matches scheduled yet.</div>
+      </div>
+    `;
+  }
+
+  // Group by date
+  const byDate = {};
+  matches.forEach(m => {
+    const date = m.sked_date || 'No Date';
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push(m);
+  });
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-before:always;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">V. MATCH SCHEDULE</div>
+  `;
+
+  Object.keys(byDate).sort().forEach(date => {
+    const dayMatches = byDate[date].sort((a, b) => (a.sked_time || '').localeCompare(b.sked_time || ''));
+    
+    html += `
+      <div style="margin-bottom:30px;margin-left:20px;">
+        <div style="font-weight:bold;margin-bottom:15px;text-decoration:underline;">${formatDatePlain(date)}</div>
+    `;
+
+    dayMatches.forEach((m, idx) => {
+      html += `
+        <div style="margin-bottom:10px;margin-left:20px;">
+          <div>${idx + 1}. Game #${escapeHtml(m.game_no)} - ${formatTimePlain(m.sked_time)}</div>
+          <div style="margin-left:20px;">
+            Sport: ${escapeHtml(m.sports_name)} (${escapeHtml(m.match_type)})<br>
+            Match: ${escapeHtml(m.team_a_name || 'TBA')} vs ${escapeHtml(m.team_b_name || 'TBA')}<br>
+            Venue: ${escapeHtml(m.venue_name || 'TBA')}
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function generatePlainResults(scores, matches) {
+  if (!scores || scores.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VI. MATCH RESULTS AND SCORES</div>
+        <div style="margin-left:20px;font-style:italic;">No results recorded yet.</div>
+      </div>
+    `;
+  }
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-before:always;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VI. MATCH RESULTS AND SCORES</div>
+      <div style="margin-left:20px;">
+  `;
+
+  scores.slice(0, 50).forEach((s, idx) => {
+    const medalText = s.medal_type && s.medal_type !== 'None' ? ` - ${s.medal_type.toUpperCase()} MEDAL` : '';
+    
+    html += `
+      <div style="margin-bottom:12px;">
+        <div>${idx + 1}. ${escapeHtml(s.match_info || 'N/A')}</div>
+        <div style="margin-left:20px;">
+          Athlete: ${escapeHtml(s.athlete_name || 'N/A')}${s.team_name ? ' (' + escapeHtml(s.team_name) + ')' : ''}<br>
+          Score: ${escapeHtml(s.score)} | Rank: ${s.rank_no}${medalText}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+function generatePlainStandings(standings) {
+  if (!standings || standings.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VII. TEAM STANDINGS</div>
+        <div style="margin-left:20px;font-style:italic;">No standings data available.</div>
+      </div>
+    `;
+  }
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-before:always;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VII. TEAM STANDINGS</div>
+      <div style="margin-left:20px;">
+  `;
+
+  standings.forEach((s, idx) => {
+    html += `
+      <div style="margin-bottom:12px;">
+        <div style="font-weight:bold;">${idx + 1}. ${escapeHtml(s.team_name)} - ${escapeHtml(s.sports_name)}</div>
+        <div style="margin-left:20px;">
+          Played: ${s.no_games_played || 0} | Won: ${s.no_win || 0} | Lost: ${s.no_loss || 0} | Draw: ${s.no_draw || 0}<br>
+          Medals - Gold: ${s.no_gold || 0}, Silver: ${s.no_silver || 0}, Bronze: ${s.no_bronze || 0}
+        </div>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+function generatePlainMedals(medals) {
+  if (!medals || medals.length === 0) {
+    return `
+      <div style="margin-bottom:50px;">
+        <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VIII. MEDAL TALLY</div>
+        <div style="margin-left:20px;font-style:italic;">No medals awarded yet.</div>
+      </div>
+    `;
+  }
+
+  let html = `
+    <div style="margin-bottom:50px;page-break-before:always;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">VIII. MEDAL TALLY</div>
+      <div style="margin-left:20px;">
+        <div style="margin-bottom:20px;font-weight:bold;">
+          <span style="display:inline-block;width:40px;">RANK</span>
+          <span style="display:inline-block;width:250px;">TEAM</span>
+          <span style="display:inline-block;width:60px;text-align:center;">GOLD</span>
+          <span style="display:inline-block;width:70px;text-align:center;">SILVER</span>
+          <span style="display:inline-block;width:70px;text-align:center;">BRONZE</span>
+          <span style="display:inline-block;width:60px;text-align:center;">TOTAL</span>
+        </div>
+        <div style="border-top:1px solid #000;margin-bottom:10px;"></div>
+  `;
+
+  medals.forEach((m, idx) => {
+    const total = (m.gold || 0) + (m.silver || 0) + (m.bronze || 0);
+    const rank = (idx + 1).toString().padStart(2, ' ');
+    
+    html += `
+      <div style="margin-bottom:8px;">
+        <span style="display:inline-block;width:40px;">${rank}</span>
+        <span style="display:inline-block;width:250px;">${escapeHtml(m.team_name)}</span>
+        <span style="display:inline-block;width:60px;text-align:center;">${m.gold || 0}</span>
+        <span style="display:inline-block;width:70px;text-align:center;">${m.silver || 0}</span>
+        <span style="display:inline-block;width:70px;text-align:center;">${m.bronze || 0}</span>
+        <span style="display:inline-block;width:60px;text-align:center;font-weight:bold;">${total}</span>
+      </div>
+    `;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+function generatePlainOfficials(umpires, managers) {
+  let html = `
+    <div style="margin-bottom:50px;page-break-before:always;">
+      <div style="font-size:16px;font-weight:bold;margin-bottom:20px;text-decoration:underline;">IX. TOURNAMENT OFFICIALS</div>
+  `;
+
+  if (managers && managers.length > 0) {
+    html += `
+      <div style="margin-bottom:30px;margin-left:20px;">
+        <div style="font-weight:bold;margin-bottom:10px;">Sports Directors/Managers:</div>
+        <div style="margin-left:20px;">
+    `;
+
+    managers.forEach((m, idx) => {
+      html += `<div style="margin-bottom:5px;">${idx + 1}. ${escapeHtml(m.full_name)}</div>`;
+    });
+
+    html += `</div></div>`;
+  }
+
+  if (umpires && umpires.length > 0) {
+    html += `
+      <div style="margin-bottom:30px;margin-left:20px;">
+        <div style="font-weight:bold;margin-bottom:10px;">Umpires:</div>
+        <div style="margin-left:20px;">
+    `;
+
+    umpires.forEach((u, idx) => {
+      html += `<div style="margin-bottom:5px;">${idx + 1}. ${escapeHtml(u.full_name)}</div>`;
+    });
+
+    html += `</div></div>`;
+  }
+
+  // Signature section
+  html += `
+    <div style="margin-top:80px;margin-left:20px;">
+      <div style="font-weight:bold;margin-bottom:40px;">CERTIFICATION:</div>
+      
+      <div style="margin-bottom:60px;">
+        <div style="margin-bottom:40px;">
+          Prepared by:
+        </div>
+        <div style="border-bottom:1px solid #000;width:300px;margin-bottom:10px;"></div>
+        <div>Tournament Manager</div>
+        <div style="margin-top:15px;">Date: _____________________</div>
+      </div>
+      
+      <div style="margin-bottom:60px;">
+        <div style="margin-bottom:40px;">
+          Reviewed and approved by:
+        </div>
+        <div style="border-bottom:1px solid #000;width:300px;margin-bottom:10px;"></div>
+        <div>Sports Director</div>
+        <div style="margin-top:15px;">Date: _____________________</div>
+      </div>
+    </div>
+  </div>`;
+
+  return html;
+}
+
+// Helper functions
+function formatDatePlain(dateStr) {
+  if (!dateStr || dateStr === 'No Date') return 'No Date';
+  try {
+    const date = new Date(dateStr);
+    const options = { year: 'numeric', month: 'long', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+function formatTimePlain(timeStr) {
+  if (!timeStr) return 'TBA';
+  try {
+    const [hours, minutes] = timeStr.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  } catch (e) {
+    return timeStr;
+  }
+}
+
+function printReport() {
+  const style = document.createElement('style');
+  style.textContent = `
+    @media print {
+      @page {
+        margin: 0.75in;
+        size: letter portrait;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .sidebar, .top-bar {
+        display: none !important;
+      }
+      .main-content {
+        margin-left: 0 !important;
+      }
+      #printPreview {
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #printableReport {
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  window.print();
+  
+  setTimeout(() => {
+    document.head.removeChild(style);
+  }, 1000);
 }
 
 function closePreview() {
-  $('#printPreview').style.display = 'none';
-  $('#printPreview').innerHTML = '';
+  const preview = $('#printPreview');
+  if (preview) {
+    preview.style.display = 'none';
+    preview.innerHTML = '';
+  }
 }
 
 // ==========================================
@@ -1153,3 +2386,12 @@ window.openPrintModal = openPrintModal;
 window.closePrintModal = closePrintModal;
 window.generatePrintReport = generatePrintReport;
 window.closePreview = closePreview;
+window.showScheduleMatchModal = showScheduleMatchModal;
+window.closeScheduleMatchModal = closeScheduleMatchModal;
+window.saveScheduleMatch = saveScheduleMatch;
+window.onScheduleTournamentChange = onScheduleTournamentChange;
+window.onScheduleSportChange = onScheduleSportChange;
+window.editMatch = editMatch;
+window.closeEditMatchModal = closeEditMatchModal;
+window.saveEditMatch = saveEditMatch;
+window.deleteMatch = deleteMatch;

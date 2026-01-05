@@ -131,39 +131,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sports_id = (int)$sport_row['sports_id'];
           }
         }
-// TRAINEE - separate logic
-elseif (strcasecmp($role, 'trainee') === 0) {
-  $sport_stmt = $pdo->prepare("
-    SELECT st.sports_id
-    FROM tbl_team_trainees tt
-    JOIN tbl_sports_team st ON st.team_id = tt.team_id
-    WHERE tt.trainee_id = :pid AND tt.is_active = 1
-    ORDER BY st.tour_id DESC
-    LIMIT 1
-  ");
-  $sport_stmt->execute(['pid' => $user['person_id']]);
-  $sport_row = $sport_stmt->fetch();
-  if ($sport_row) {
-    $sports_id = (int)$sport_row['sports_id'];
-  }
-}
-// TRAINOR - get from tbl_sports_team
-elseif (strcasecmp($role, 'trainor') === 0) {
-  $sport_stmt = $pdo->prepare("
-    SELECT sports_id
-    FROM tbl_sports_team
-    WHERE trainor1_id = ? 
-       OR trainor2_id = ? 
-       OR trainor3_id = ?
-    ORDER BY tour_id DESC
-    LIMIT 1
-  ");
-  $sport_stmt->execute([$user['person_id'], $user['person_id'], $user['person_id']]);
-  $sport_row = $sport_stmt->fetch();
-  if ($sport_row) {
-    $sports_id = (int)$sport_row['sports_id'];
-  }
-}
+        // TRAINEE - separate logic
+        elseif (strcasecmp($role, 'trainee') === 0) {
+          $sport_stmt = $pdo->prepare("
+            SELECT st.sports_id
+            FROM tbl_team_trainees tt
+            JOIN tbl_sports_team st ON st.team_id = tt.team_id
+            WHERE tt.trainee_id = :pid AND tt.is_active = 1
+            ORDER BY st.tour_id DESC
+            LIMIT 1
+          ");
+          $sport_stmt->execute(['pid' => $user['person_id']]);
+          $sport_row = $sport_stmt->fetch();
+          if ($sport_row) {
+            $sports_id = (int)$sport_row['sports_id'];
+          }
+        }
+        // TRAINOR - get from tbl_sports_team
+        elseif (strcasecmp($role, 'trainor') === 0) {
+          $sport_stmt = $pdo->prepare("
+            SELECT sports_id
+            FROM tbl_sports_team
+            WHERE trainor1_id = ? 
+               OR trainor2_id = ? 
+               OR trainor3_id = ?
+            ORDER BY tour_id DESC
+            LIMIT 1
+          ");
+          $sport_stmt->execute([$user['person_id'], $user['person_id'], $user['person_id']]);
+          $sport_row = $sport_stmt->fetch();
+          if ($sport_row) {
+            $sports_id = (int)$sport_row['sports_id'];
+          }
+        }
         
         elseif (in_array($normalized_role, ['umpire'])) {
           // Get sport from match assignments or recent activity
@@ -269,24 +269,23 @@ elseif (strcasecmp($role, 'trainor') === 0) {
     color: #111827;
   }
 
-.header {
-  text-align: center;
-  margin-bottom: 16px;
-}
+  .header {
+    text-align: center;
+    margin-bottom: 16px;
+  }
 
-.header h1 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: #111827;
-}
+  .header h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: #111827;
+  }
 
-.header p {
-  margin-top: 4px;
-  font-size: 13px;
-  color: #6b7280;
-}
-
+  .header p {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #6b7280;
+  }
 
   /* ===== CARD ===== */
   .card {
@@ -392,6 +391,28 @@ elseif (strcasecmp($role, 'trainor') === 0) {
     font-style: normal;
     color: #374151;
   }
+
+  /* ===== BACK TO HOME LINK ===== */
+  .back-home {
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .back-home a {
+    color: #6b7280;
+    text-decoration: none;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s;
+  }
+
+  .back-home a:hover {
+    color: #111827;
+  }
 </style>
 
 </head>
@@ -418,6 +439,10 @@ elseif (strcasecmp($role, 'trainor') === 0) {
     <?php if ($error): ?>
       <div class="msg err"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
+
+    <div class="back-home">
+      <a href="<?= BASE_URL ?>/index.php">← Back to Home</a>
+    </div>
   </form>
 </body>
 </html>

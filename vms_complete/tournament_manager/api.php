@@ -1045,5 +1045,319 @@ if ($action === 'toggle_venue') {
   }
 }
 
+// ==========================================
+// MODULE 4: MATCH SCHEDULING
+// ==========================================
+
+if ($action === 'umpires') {
+  try {
+    // Get all umpires (persons with role_type = 'umpire')
+    $stmt = $pdo->query("
+      SELECT person_id, CONCAT(f_name, ' ', l_name) AS full_name
+      FROM tbl_person
+      WHERE role_type = 'umpire'
+      ORDER BY l_name, f_name
+    ");
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'sports_managers') {
+  try {
+    // Get all sports directors/managers (persons with role_type = 'sports director')
+    $stmt = $pdo->query("
+      SELECT person_id, CONCAT(f_name, ' ', l_name) AS full_name
+      FROM tbl_person
+      WHERE role_type = 'sports director'
+      ORDER BY l_name, f_name
+    ");
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'tournament_teams_by_sport') {
+  try {
+    $tour_id = (int)($_GET['tour_id'] ?? 0);
+    $sports_id = (int)($_GET['sports_id'] ?? 0);
+    
+    if ($tour_id <= 0 || $sports_id <= 0) {
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Invalid tournament or sport ID']);
+    }
+
+    // Get teams registered for this sport in this tournament
+    $stmt = $pdo->prepare("
+      SELECT DISTINCT t.team_id, t.team_name
+      FROM tbl_sports_team st
+      JOIN tbl_team t ON t.team_id = st.team_id
+      WHERE st.tour_id = :tour_id AND st.sports_id = :sports_id AND t.is_active = 1
+      ORDER BY t.team_name
+    ");
+    $stmt->execute(['tour_id' => $tour_id, 'sports_id' => $sports_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'tournament_athletes_by_sport') {
+  try {
+    $tour_id = (int)($_GET['tour_id'] ?? 0);
+    $sports_id = (int)($_GET['sports_id'] ?? 0);
+    
+    if ($tour_id <= 0 || $sports_id <= 0) {
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Invalid tournament or sport ID']);
+    }
+
+    // Get individual athletes registered for this sport in this tournament
+    $stmt = $pdo->prepare("
+      SELECT DISTINCT p.person_id, CONCAT(p.f_name, ' ', p.l_name) AS full_name, t.team_name
+      FROM tbl_team_athletes ta
+      JOIN tbl_person p ON p.person_id = ta.person_id
+      LEFT JOIN tbl_team t ON t.team_id = ta.team_id
+      WHERE ta.tour_id = :tour_id AND ta.sports_id = :sports_id AND ta.is_active = 1
+      ORDER BY p.l_name, p.f_name
+    ");
+    $stmt->execute(['tour_id' => $tour_id, 'sports_id' => $sports_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'create_match') {
+  if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    out(['ok'=>false,'message'=>'Method not allowed']);
+  }
+
+  try {
+    $pdo->beginTransaction();
+    
+    $tour_id = (int)($_POST['tour_id'] ?? 0);
+    $sports_id = (int)($_POST['sports_id'] ?? 0);
+    $game_no = trim($_POST['game_no'] ?? '');
+    $sked_date = $_POST['sked_date'] ?? '';
+    $sked_time = $_POST['sked_time'] ?? '';
+    $venue_id = (int)($_POST['venue_id'] ?? 0);
+    $match_umpire_id = (int)($_POST['match_umpire_id'] ?? 0);
+    $match_sports_manager_id = (int)($_POST['match_sports_manager_id'] ?? 0);
+    $match_type = trim($_POST['match_type'] ?? '');
+    $sports_type = trim($_POST['sports_type'] ?? '');
+    $team_a_id = isset($_POST['team_a_id']) && $_POST['team_a_id'] !== '' ? (int)$_POST['team_a_id'] : null;
+    $team_b_id = isset($_POST['team_b_id']) && $_POST['team_b_id'] !== '' ? (int)$_POST['team_b_id'] : null;
+
+    // Validation
+    if ($tour_id <= 0 || $sports_id <= 0 || !$game_no || !$sked_date || !$sked_time || !$match_type || !$sports_type) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Missing required fields']);
+    }
+
+    // Validate match type
+    if (!in_array($match_type, ['EL', 'QF', 'SF', 'F'])) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Invalid match type. Must be EL, QF, SF, or F']);
+    }
+
+    // Validate sports type
+    if (!in_array($sports_type, ['individual', 'team'])) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Invalid sports type. Must be individual or team']);
+    }
+
+    // For team sports, both teams are required
+    if ($sports_type === 'team' && (!$team_a_id || !$team_b_id)) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Both teams are required for team sports']);
+    }
+
+    // Teams cannot be the same
+    if ($sports_type === 'team' && $team_a_id === $team_b_id) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Team A and Team B cannot be the same']);
+    }
+
+    // Check for duplicate game number in same tournament
+    $checkStmt = $pdo->prepare("
+      SELECT 1 FROM tbl_match 
+      WHERE tour_id = :tour_id AND game_no = :game_no
+    ");
+    $checkStmt->execute(['tour_id' => $tour_id, 'game_no' => $game_no]);
+    if ($checkStmt->fetch()) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Game number already exists for this tournament']);
+    }
+
+    // Insert match
+    $stmt = $pdo->prepare("
+      INSERT INTO tbl_match (
+        game_no, sked_date, sked_time, venue_id, match_umpire_id, 
+        match_sports_manager_id, match_type, sports_id, sports_type, 
+        team_a_id, team_b_id, tour_id, winner_id
+      ) VALUES (
+        :game_no, :sked_date, :sked_time, :venue_id, :match_umpire_id,
+        :match_sports_manager_id, :match_type, :sports_id, :sports_type,
+        :team_a_id, :team_b_id, :tour_id, NULL
+      )
+    ");
+    
+    $stmt->execute([
+      'game_no' => $game_no,
+      'sked_date' => $sked_date,
+      'sked_time' => $sked_time,
+      'venue_id' => $venue_id > 0 ? $venue_id : null,
+      'match_umpire_id' => $match_umpire_id > 0 ? $match_umpire_id : null,
+      'match_sports_manager_id' => $match_sports_manager_id > 0 ? $match_sports_manager_id : null,
+      'match_type' => $match_type,
+      'sports_id' => $sports_id,
+      'sports_type' => $sports_type,
+      'team_a_id' => $team_a_id,
+      'team_b_id' => $team_b_id,
+      'tour_id' => $tour_id
+    ]);
+
+    $pdo->commit();
+    out(['ok'=>true,'message'=>'Match scheduled successfully']);
+  } catch (PDOException $e) {
+    $pdo->rollBack();
+    error_log("create_match error: " . $e->getMessage());
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'update_match') {
+  if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    out(['ok'=>false,'message'=>'Method not allowed']);
+  }
+
+  try {
+    $pdo->beginTransaction();
+    
+    $match_id = (int)($_POST['match_id'] ?? 0);
+    $game_no = trim($_POST['game_no'] ?? '');
+    $sked_date = $_POST['sked_date'] ?? '';
+    $sked_time = $_POST['sked_time'] ?? '';
+    $venue_id = (int)($_POST['venue_id'] ?? 0);
+    $match_umpire_id = (int)($_POST['match_umpire_id'] ?? 0);
+    $match_sports_manager_id = (int)($_POST['match_sports_manager_id'] ?? 0);
+    $match_type = trim($_POST['match_type'] ?? '');
+    $team_a_id = isset($_POST['team_a_id']) && $_POST['team_a_id'] !== '' ? (int)$_POST['team_a_id'] : null;
+    $team_b_id = isset($_POST['team_b_id']) && $_POST['team_b_id'] !== '' ? (int)$_POST['team_b_id'] : null;
+
+    if ($match_id <= 0 || !$game_no || !$sked_date || !$sked_time || !$match_type) {
+      $pdo->rollBack();
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Missing required fields']);
+    }
+
+    // Get current match to check sports_type
+    $checkStmt = $pdo->prepare("SELECT sports_type FROM tbl_match WHERE match_id = :match_id");
+    $checkStmt->execute(['match_id' => $match_id]);
+    $currentMatch = $checkStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$currentMatch) {
+      $pdo->rollBack();
+      http_response_code(404);
+      out(['ok'=>false,'message'=>'Match not found']);
+    }
+
+    // For team sports, validate teams
+    if ($currentMatch['sports_type'] === 'team') {
+      if (!$team_a_id || !$team_b_id) {
+        $pdo->rollBack();
+        http_response_code(400);
+        out(['ok'=>false,'message'=>'Both teams are required for team sports']);
+      }
+      if ($team_a_id === $team_b_id) {
+        $pdo->rollBack();
+        http_response_code(400);
+        out(['ok'=>false,'message'=>'Team A and Team B cannot be the same']);
+      }
+    }
+
+    // Update match
+    $stmt = $pdo->prepare("
+      UPDATE tbl_match 
+      SET game_no = :game_no,
+          sked_date = :sked_date,
+          sked_time = :sked_time,
+          venue_id = :venue_id,
+          match_umpire_id = :match_umpire_id,
+          match_sports_manager_id = :match_sports_manager_id,
+          match_type = :match_type,
+          team_a_id = :team_a_id,
+          team_b_id = :team_b_id
+      WHERE match_id = :match_id
+    ");
+    
+    $stmt->execute([
+      'match_id' => $match_id,
+      'game_no' => $game_no,
+      'sked_date' => $sked_date,
+      'sked_time' => $sked_time,
+      'venue_id' => $venue_id > 0 ? $venue_id : null,
+      'match_umpire_id' => $match_umpire_id > 0 ? $match_umpire_id : null,
+      'match_sports_manager_id' => $match_sports_manager_id > 0 ? $match_sports_manager_id : null,
+      'match_type' => $match_type,
+      'team_a_id' => $team_a_id,
+      'team_b_id' => $team_b_id
+    ]);
+
+    $pdo->commit();
+    out(['ok'=>true,'message'=>'Match updated successfully']);
+  } catch (PDOException $e) {
+    $pdo->rollBack();
+    error_log("update_match error: " . $e->getMessage());
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'delete_match') {
+  if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    out(['ok'=>false,'message'=>'Method not allowed']);
+  }
+
+  try {
+    $match_id = (int)($_POST['match_id'] ?? 0);
+
+    if ($match_id <= 0) {
+      http_response_code(400);
+      out(['ok'=>false,'message'=>'Invalid match ID']);
+    }
+
+    // Delete associated scores first
+    $deleteScores = $pdo->prepare("DELETE FROM tbl_comp_score WHERE match_id = :match_id");
+    $deleteScores->execute(['match_id' => $match_id]);
+
+    // Delete the match
+    $stmt = $pdo->prepare("DELETE FROM tbl_match WHERE match_id = :match_id");
+    $stmt->execute(['match_id' => $match_id]);
+
+    out(['ok'=>true,'message'=>'Match deleted successfully']);
+  } catch (PDOException $e) {
+    http_response_code(500);
+    out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
+  }
+}
+
 http_response_code(404);
 out(['ok'=>false,'message'=>'Unknown action']);
