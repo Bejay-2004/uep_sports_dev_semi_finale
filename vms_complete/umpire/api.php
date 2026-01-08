@@ -34,35 +34,44 @@ function out($data) {
 
 if ($action === 'umpire_stats') {
   try {
-    // Total matches
-    $total_stmt = $pdo->query("SELECT COUNT(*) as count FROM tbl_match");
+    // Total assigned matches
+    $total_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_match 
+      WHERE match_umpire_id = :person_id
+    ");
+    $total_stmt->execute(['person_id' => $person_id]);
     $total_matches = $total_stmt->fetch()['count'];
     
-    // Upcoming matches
+    // Upcoming assigned matches
     $upcoming_stmt = $pdo->prepare("
       SELECT COUNT(*) as count 
       FROM tbl_match 
-      WHERE sked_date >= CURRENT_DATE()
+      WHERE match_umpire_id = :person_id 
+      AND sked_date >= CURRENT_DATE()
     ");
-    $upcoming_stmt->execute();
+    $upcoming_stmt->execute(['person_id' => $person_id]);
     $upcoming_matches = $upcoming_stmt->fetch()['count'];
     
-    // Completed matches
+    // Completed assigned matches
     $completed_stmt = $pdo->prepare("
       SELECT COUNT(*) as count 
       FROM tbl_match 
-      WHERE winner_id IS NOT NULL
+      WHERE match_umpire_id = :person_id 
+      AND winner_id IS NOT NULL
     ");
-    $completed_stmt->execute();
+    $completed_stmt->execute(['person_id' => $person_id]);
     $completed_matches = $completed_stmt->fetch()['count'];
     
-    // Active tournaments
+    // Active tournaments with assigned matches
     $tournaments_stmt = $pdo->prepare("
-      SELECT COUNT(*) as count 
-      FROM tbl_tournament 
-      WHERE is_active = 1
+      SELECT COUNT(DISTINCT m.tour_id) as count 
+      FROM tbl_match m
+      JOIN tbl_tournament t ON t.tour_id = m.tour_id
+      WHERE m.match_umpire_id = :person_id 
+      AND t.is_active = 1
     ");
-    $tournaments_stmt->execute();
+    $tournaments_stmt->execute(['person_id' => $person_id]);
     $active_tournaments = $tournaments_stmt->fetch()['count'];
     
     out([
@@ -97,11 +106,12 @@ if ($action === 'upcoming_matches') {
       JOIN tbl_team ta ON ta.team_id = m.team_a_id
       JOIN tbl_team tb ON tb.team_id = m.team_b_id
       LEFT JOIN tbl_game_venue v ON v.venue_id = m.venue_id
-      WHERE m.sked_date >= CURRENT_DATE()
+      WHERE m.match_umpire_id = :person_id 
+      AND m.sked_date >= CURRENT_DATE()
       ORDER BY m.sked_date, m.sked_time
       LIMIT 10
     ");
-    $stmt->execute();
+    $stmt->execute(['person_id' => $person_id]);
     out($stmt->fetchAll());
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);
@@ -126,11 +136,12 @@ if ($action === 'recent_results') {
       JOIN tbl_team ta ON ta.team_id = m.team_a_id
       JOIN tbl_team tb ON tb.team_id = m.team_b_id
       LEFT JOIN tbl_team tw ON tw.team_id = m.winner_id
-      WHERE m.winner_id IS NOT NULL
+      WHERE m.match_umpire_id = :person_id 
+      AND m.winner_id IS NOT NULL
       ORDER BY m.sked_date DESC, m.sked_time DESC
       LIMIT 10
     ");
-    $stmt->execute();
+    $stmt->execute(['person_id' => $person_id]);
     out($stmt->fetchAll());
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);
@@ -163,10 +174,10 @@ if ($action === 'all_matches') {
       JOIN tbl_team tb ON tb.team_id = m.team_b_id
       LEFT JOIN tbl_team tw ON tw.team_id = m.winner_id
       LEFT JOIN tbl_game_venue v ON v.venue_id = m.venue_id
-      WHERE 1=1
+      WHERE m.match_umpire_id = :person_id
     ";
     
-    $params = [];
+    $params = ['person_id' => $person_id];
     
     if ($tour_id !== null) {
       $sql .= " AND m.tour_id = :tour_id";
@@ -214,10 +225,11 @@ if ($action === 'match_results') {
       JOIN tbl_team tb ON tb.team_id = m.team_b_id
       LEFT JOIN tbl_team tw ON tw.team_id = m.winner_id
       LEFT JOIN tbl_game_venue v ON v.venue_id = m.venue_id
-      WHERE m.winner_id IS NOT NULL
+      WHERE m.match_umpire_id = :person_id 
+      AND m.winner_id IS NOT NULL
     ";
     
-    $params = [];
+    $params = ['person_id' => $person_id];
     
     if ($tour_id !== null) {
       $sql .= " AND m.tour_id = :tour_id";
@@ -249,6 +261,19 @@ if ($action === 'standings') {
     
     if ($tour_id <= 0) {
       out(['ok' => false, 'message' => 'Invalid tournament ID']);
+    }
+
+    // Check if umpire has any matches in this tournament
+    $check_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_match 
+      WHERE tour_id = :tour_id 
+      AND match_umpire_id = :person_id
+    ");
+    $check_stmt->execute(['tour_id' => $tour_id, 'person_id' => $person_id]);
+    
+    if ($check_stmt->fetch()['count'] == 0) {
+      out(['ok' => false, 'message' => 'No access to this tournament']);
     }
 
     $stmt = $pdo->prepare("
@@ -289,6 +314,19 @@ if ($action === 'medal_tally') {
       out(['ok' => false, 'message' => 'Invalid tournament ID']);
     }
 
+    // Check if umpire has any matches in this tournament
+    $check_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_match 
+      WHERE tour_id = :tour_id 
+      AND match_umpire_id = :person_id
+    ");
+    $check_stmt->execute(['tour_id' => $tour_id, 'person_id' => $person_id]);
+    
+    if ($check_stmt->fetch()['count'] == 0) {
+      out(['ok' => false, 'message' => 'No access to this tournament']);
+    }
+
     $stmt = $pdo->prepare("
       SELECT 
         t.team_id,
@@ -315,11 +353,20 @@ if ($action === 'medal_tally') {
 
 if ($action === 'tournaments') {
   try {
-    $stmt = $pdo->query("
-      SELECT tour_id, tour_name, school_year, tour_date, is_active
-      FROM tbl_tournament
-      ORDER BY tour_date DESC, tour_id DESC
+    // Only show tournaments where umpire has assigned matches
+    $stmt = $pdo->prepare("
+      SELECT DISTINCT 
+        t.tour_id, 
+        t.tour_name, 
+        t.school_year, 
+        t.tour_date, 
+        t.is_active
+      FROM tbl_tournament t
+      JOIN tbl_match m ON m.tour_id = t.tour_id
+      WHERE m.match_umpire_id = :person_id
+      ORDER BY t.tour_date DESC, t.tour_id DESC
     ");
+    $stmt->execute(['person_id' => $person_id]);
     out($stmt->fetchAll());
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);
@@ -332,12 +379,18 @@ if ($action === 'tournaments') {
 
 if ($action === 'sports') {
   try {
-    $stmt = $pdo->query("
-      SELECT sports_id, sports_name
-      FROM tbl_sports
-      WHERE is_active = 1
-      ORDER BY sports_name
+    // Only show sports where umpire has assigned matches
+    $stmt = $pdo->prepare("
+      SELECT DISTINCT 
+        s.sports_id, 
+        s.sports_name
+      FROM tbl_sports s
+      JOIN tbl_match m ON m.sports_id = s.sports_id
+      WHERE m.match_umpire_id = :person_id 
+      AND s.is_active = 1
+      ORDER BY s.sports_name
     ");
+    $stmt->execute(['person_id' => $person_id]);
     out($stmt->fetchAll());
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);

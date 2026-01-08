@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Spectator API Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .test-box { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        pre { overflow-x: auto; white-space: pre-wrap; }
+        .filter-box { background: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        select, input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Spectator API Tester</h1>
+        
+        <div class="test-box">
+            <h2>1. Test Basic Endpoints (No Filters)</h2>
+            <button onclick="testAPI('tournaments')">Test Tournaments</button>
+            <button onclick="testAPI('sports')">Test Sports</button>
+            <button onclick="testAPI('stats')">Test Stats</button>
+            <button onclick="testAPI('matches')">Test Matches (All)</button>
+            <button onclick="testAPI('teams')">Test Teams (All)</button>
+            <div id="result1" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-box">
+            <h2>2. Test Filtered Matches</h2>
+            <div class="filter-box">
+                <label>Tournament ID: <input type="number" id="matchTourId" placeholder="e.g., 1"></label>
+                <label>Sport ID: <input type="number" id="matchSportId" placeholder="e.g., 1"></label>
+            </div>
+            <button onclick="testFilteredMatches()">Test Filtered Matches</button>
+            <div id="result2" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-box">
+            <h2>3. Test Standings (Requires Both IDs)</h2>
+            <div class="filter-box">
+                <label>Tournament ID: <input type="number" id="standTourId" placeholder="Required"></label>
+                <label>Sport ID: <input type="number" id="standSportId" placeholder="Required"></label>
+            </div>
+            <button onclick="testStandings()">Test Standings</button>
+            <div id="result3" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-box">
+            <h2>4. Test Filtered Teams</h2>
+            <div class="filter-box">
+                <label>Sport ID: <input type="number" id="teamSportId" placeholder="Optional"></label>
+            </div>
+            <button onclick="testFilteredTeams()">Test Filtered Teams</button>
+            <div id="result4" class="result" style="display:none;"></div>
+        </div>
+
+        <div class="test-box">
+            <h2>5. Test Players</h2>
+            <div class="filter-box">
+                <label>Team ID: <input type="number" id="playerTeamId" placeholder="Optional"></label>
+                <label>Sport ID: <input type="number" id="playerSportId" placeholder="Optional"></label>
+            </div>
+            <button onclick="testPlayers()">Test Players</button>
+            <div id="result5" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testAPI(action) {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch(`api.php?action=${action}`);
+                
+                // Check if response is ok
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Get response text first
+                const text = await response.text();
+                
+                // Try to parse as JSON
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ Invalid JSON Response</h3>
+                        <p><strong>Error:</strong> ${e.message}</p>
+                        <p><strong>Raw Response:</strong></p>
+                        <pre>${text}</pre>
+                    `;
+                    return;
+                }
+                
+                // Check for API error
+                if (data.ok === false) {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ API Error</h3>
+                        <p><strong>Message:</strong> ${data.message || 'Unknown error'}</p>
+                        ${data.error ? `<p><strong>Details:</strong> ${data.error}</p>` : ''}
+                    `;
+                    return;
+                }
+                
+                // Success!
+                resultDiv.className = 'result success';
+                const count = Array.isArray(data) ? data.length : (typeof data === 'object' ? 1 : 0);
+                resultDiv.innerHTML = `
+                    <h3>✅ Success: ${action}</h3>
+                    <p><strong>Records:</strong> ${count}</p>
+                    <p><strong>Response:</strong></p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Request Failed</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Check:</strong></p>
+                    <ul>
+                        <li>Is the API file uploaded correctly?</li>
+                        <li>Is your session active (are you logged in)?</li>
+                        <li>Check browser console (F12) for more details</li>
+                        <li>Check PHP error log on server</li>
+                    </ul>
+                `;
+                console.error('Full error:', error);
+            }
+        }
+        
+        async function testFilteredMatches() {
+            const tourId = document.getElementById('matchTourId').value;
+            const sportId = document.getElementById('matchSportId').value;
+            
+            let url = 'api.php?action=matches';
+            if (tourId) url += `&tour_id=${tourId}`;
+            if (sportId) url += `&sport_id=${sportId}`;
+            
+            await testAPICustom(url, 'result2');
+        }
+        
+        async function testStandings() {
+            const tourId = document.getElementById('standTourId').value;
+            const sportId = document.getElementById('standSportId').value;
+            
+            if (!tourId || !sportId) {
+                const resultDiv = document.getElementById('result3');
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = '<h3>❌ Both Tournament ID and Sport ID are required for standings</h3>';
+                return;
+            }
+            
+            const url = `api.php?action=standings&tour_id=${tourId}&sport_id=${sportId}`;
+            await testAPICustom(url, 'result3');
+        }
+        
+        async function testFilteredTeams() {
+            const sportId = document.getElementById('teamSportId').value;
+            
+            let url = 'api.php?action=teams';
+            if (sportId) url += `&sport_id=${sportId}`;
+            
+            await testAPICustom(url, 'result4');
+        }
+        
+        async function testPlayers() {
+            const teamId = document.getElementById('playerTeamId').value;
+            const sportId = document.getElementById('playerSportId').value;
+            
+            let url = 'api.php?action=players';
+            if (teamId) url += `&team_id=${teamId}`;
+            if (sportId) url += `&sport_id=${sportId}`;
+            
+            await testAPICustom(url, 'result5');
+        }
+        
+        async function testAPICustom(url, resultId) {
+            const resultDiv = document.getElementById(resultId);
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                console.log('Fetching:', url);
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ Invalid JSON Response</h3>
+                        <p><strong>Error:</strong> ${e.message}</p>
+                        <pre>${text.substring(0, 500)}</pre>
+                    `;
+                    return;
+                }
+                
+                if (data.ok === false) {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ API Error</h3>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        ${data.error ? `<p><strong>Details:</strong> ${data.error}</p>` : ''}
+                    `;
+                    return;
+                }
+                
+                resultDiv.className = 'result success';
+                const count = Array.isArray(data) ? data.length : 1;
+                resultDiv.innerHTML = `
+                    <h3>✅ Success</h3>
+                    <p><strong>URL:</strong> ${url}</p>
+                    <p><strong>Records:</strong> ${count}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Request Failed</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+                console.error('Full error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -75,12 +75,28 @@ if ($action === 'admin_stats') {
 if ($action === 'users') {
   try {
     $stmt = $pdo->query("
-      SELECT u.*, p.f_name, p.l_name, p.m_name, p.college_code, p.course
+      SELECT 
+        u.user_id,
+        u.person_id,
+        u.username,
+        u.user_role,
+        u.is_active,
+        p.f_name,
+        p.l_name,
+        p.m_name,
+        p.title,
+        p.date_birth,
+        p.college_code,
+        p.course,
+        p.blood_type,
+        p.role_type,
+        c.college_name
       FROM tbl_users u
       JOIN tbl_person p ON p.person_id = u.person_id
+      LEFT JOIN tbl_college c ON c.college_code = p.college_code
       ORDER BY u.user_id DESC
     ");
-    out($stmt->fetchAll());
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);
   }
@@ -88,62 +104,182 @@ if ($action === 'users') {
 
 if ($action === 'create_user') {
   try {
+    // Validate required fields
+    if (empty($input['f_name'])) {
+      out(['ok' => false, 'error' => 'First name is required']);
+    }
+    if (empty($input['l_name'])) {
+      out(['ok' => false, 'error' => 'Last name is required']);
+    }
+    if (empty($input['role_type'])) {
+      out(['ok' => false, 'error' => 'Role type is required']);
+    }
+    if (empty($input['user_role'])) {
+      out(['ok' => false, 'error' => 'User role is required']);
+    }
+    if (empty($input['username'])) {
+      out(['ok' => false, 'error' => 'Username is required']);
+    }
+    if (empty($input['password'])) {
+      out(['ok' => false, 'error' => 'Password is required']);
+    }
+    
+    // Check if username already exists
+    $stmt = $pdo->prepare("SELECT user_id FROM tbl_users WHERE username = ?");
+    $stmt->execute([$input['username']]);
+    if ($stmt->fetch()) {
+      out(['ok' => false, 'error' => 'Username already exists']);
+    }
+    
     $pdo->beginTransaction();
     
-    // Create person
+    // Handle empty college_code (NULL for FK constraint)
+    $college_code = !empty($input['college_code']) ? $input['college_code'] : null;
+    
+    // ==========================================
+    // STORE EXACT VALUES - NO NORMALIZATION
+    // ==========================================
+    
+    // Get the EXACT role_type value (as submitted from form)
+    $role_type = $input['role_type']; // Store exactly as selected
+    
+    // Get the EXACT user_role value (as submitted from form)
+    $user_role = $input['user_role']; // Store exactly as selected
+    
+    // 1. INSERT into tbl_person with EXACT role_type
     $stmt = $pdo->prepare("
-      INSERT INTO tbl_person (f_name, l_name, role_type, is_active) 
-      VALUES (?, ?, ?, 1)
+      INSERT INTO tbl_person 
+      (f_name, l_name, m_name, role_type, title, date_birth, college_code, course, blood_type, is_active) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     ");
     $stmt->execute([
       $input['f_name'],
       $input['l_name'],
-      $input['user_role']
+      $input['m_name'] ?? null,
+      $role_type,  // EXACT value from form
+      $input['title'] ?? null,
+      $input['date_birth'] ?? null,
+      $college_code,
+      $input['course'] ?? null,
+      $input['blood_type'] ?? null
     ]);
     $new_person_id = $pdo->lastInsertId();
     
-    // Create user
+    // 2. INSERT into tbl_users with EXACT user_role
     $stmt = $pdo->prepare("
       INSERT INTO tbl_users (username, password, user_role, person_id, is_active) 
       VALUES (?, ?, ?, ?, 1)
     ");
     $stmt->execute([
       $input['username'],
-      $input['password'], // Should be hashed in production
-      $input['user_role'],
+      password_hash($input['password'], PASSWORD_DEFAULT),
+      $user_role,  // EXACT value from form
       $new_person_id
     ]);
+    $new_user_id = $pdo->lastInsertId();
+    
+    // 3. INSERT into tbl_team_athletes (if applicable)
+    if (!empty($input['assign_to_team']) && !empty($input['team_assignment'])) {
+      $team_data = $input['team_assignment'];
+      
+      if (!empty($team_data['team_id']) && !empty($team_data['sports_id'])) {
+        $stmt = $pdo->prepare("
+          INSERT INTO tbl_team_athletes 
+          (tour_id, team_id, sports_id, person_id, is_captain, is_active) 
+          VALUES (?, ?, ?, ?, ?, 1)
+        ");
+        $stmt->execute([
+          $team_data['tour_id'] ?? null,
+          $team_data['team_id'],
+          $team_data['sports_id'],
+          $new_person_id,
+          $team_data['is_captain'] ?? 0
+        ]);
+      }
+    }
     
     $pdo->commit();
     
+    // Log activity with EXACT role values
     logActivity($pdo, $user_id, $person_id, 'create', 
-      "Created user: {$input['username']} ({$input['user_role']})");
+      "Created user: {$input['username']} (Role: {$role_type}, Access: {$user_role})");
     
-    out(['ok' => true, 'user_id' => $pdo->lastInsertId()]);
+    out([
+      'ok' => true, 
+      'user_id' => $new_user_id, 
+      'person_id' => $new_person_id,
+      'message' => 'User created successfully'
+    ]);
+    
   } catch (PDOException $e) {
-    $pdo->rollBack();
-    out(['ok' => false, 'error' => $e->getMessage()]);
+    if ($pdo->inTransaction()) {
+      $pdo->rollBack();
+    }
+    error_log("CREATE_USER ERROR: " . $e->getMessage());
+    out(['ok' => false, 'error' => 'Database error: ' . $e->getMessage()]);
   }
 }
 
 if ($action === 'update_user') {
   try {
+    if (empty($input['user_id'])) {
+      out(['ok' => false, 'error' => 'User ID is required']);
+    }
+    if (empty($input['f_name'])) {
+      out(['ok' => false, 'error' => 'First name is required']);
+    }
+    if (empty($input['l_name'])) {
+      out(['ok' => false, 'error' => 'Last name is required']);
+    }
+    if (empty($input['role_type'])) {
+      out(['ok' => false, 'error' => 'Role type is required']);
+    }
+    if (empty($input['user_role'])) {
+      out(['ok' => false, 'error' => 'User role is required']);
+    }
+    if (empty($input['username'])) {
+      out(['ok' => false, 'error' => 'Username is required']);
+    }
+    
+    // Check if username is taken by another user
+    $stmt = $pdo->prepare("SELECT user_id FROM tbl_users WHERE username = ? AND user_id != ?");
+    $stmt->execute([$input['username'], $input['user_id']]);
+    if ($stmt->fetch()) {
+      out(['ok' => false, 'error' => 'Username already exists']);
+    }
+    
     $pdo->beginTransaction();
     
-    // Update person
+    $college_code = !empty($input['college_code']) ? $input['college_code'] : null;
+    
+    // ==========================================
+    // STORE EXACT VALUES - NO NORMALIZATION
+    // ==========================================
+    
+    $role_type = $input['role_type']; // EXACT value
+    $user_role = $input['user_role']; // EXACT value
+    
+    // 1. UPDATE tbl_person with EXACT role_type
     $stmt = $pdo->prepare("
       UPDATE tbl_person 
-      SET f_name=?, l_name=?, role_type=? 
+      SET f_name=?, l_name=?, m_name=?, role_type=?, title=?, date_birth=?, 
+          college_code=?, course=?, blood_type=?
       WHERE person_id=(SELECT person_id FROM tbl_users WHERE user_id=?)
     ");
     $stmt->execute([
       $input['f_name'],
       $input['l_name'],
-      $input['user_role'],
+      $input['m_name'] ?? null,
+      $role_type,  // EXACT value
+      $input['title'] ?? null,
+      $input['date_birth'] ?? null,
+      $college_code,
+      $input['course'] ?? null,
+      $input['blood_type'] ?? null,
       $input['user_id']
     ]);
     
-    // Update user
+    // 2. UPDATE tbl_users with EXACT user_role
     $stmt = $pdo->prepare("
       UPDATE tbl_users 
       SET username=?, user_role=? 
@@ -151,7 +287,7 @@ if ($action === 'update_user') {
     ");
     $stmt->execute([
       $input['username'],
-      $input['user_role'],
+      $user_role,  // EXACT value
       $input['user_id']
     ]);
     
@@ -160,67 +296,91 @@ if ($action === 'update_user') {
     logActivity($pdo, $user_id, $person_id, 'update', 
       "Updated user: {$input['username']}");
     
-    out(['ok' => true]);
+    out(['ok' => true, 'message' => 'User updated successfully']);
+    
   } catch (PDOException $e) {
-    $pdo->rollBack();
-    out(['ok' => false, 'error' => $e->getMessage()]);
+    if ($pdo->inTransaction()) {
+      $pdo->rollBack();
+    }
+    error_log("UPDATE_USER ERROR: " . $e->getMessage());
+    out(['ok' => false, 'error' => 'Database error: ' . $e->getMessage()]);
   }
 }
 
 if ($action === 'toggle_user') {
   try {
+    $user_id_to_toggle = (int)$input['user_id'];
+    $new_status = (int)$input['is_active'];
+    
     $pdo->beginTransaction();
     
-    $stmt = $pdo->prepare("UPDATE tbl_users SET is_active=? WHERE user_id=?");
-    $stmt->execute([$input['is_active'], $input['user_id']]);
+    // Update both tables
+    $stmt = $pdo->prepare("
+      UPDATE tbl_users 
+      SET is_active = ? 
+      WHERE user_id = ?
+    ");
+    $stmt->execute([$new_status, $user_id_to_toggle]);
     
     $stmt = $pdo->prepare("
       UPDATE tbl_person 
-      SET is_active=? 
-      WHERE person_id=(SELECT person_id FROM tbl_users WHERE user_id=?)
+      SET is_active = ? 
+      WHERE person_id = (SELECT person_id FROM tbl_users WHERE user_id = ?)
     ");
-    $stmt->execute([$input['is_active'], $input['user_id']]);
+    $stmt->execute([$new_status, $user_id_to_toggle]);
     
     $pdo->commit();
     
-    $status = $input['is_active'] == 1 ? 'activated' : 'deactivated';
-    logActivity($pdo, $user_id, $person_id, $status, "User {$status}");
+    $action_text = $new_status ? 'activated' : 'deactivated';
+    logActivity($pdo, $user_id, $person_id, 'toggle', 
+      "User $action_text (ID: $user_id_to_toggle)");
     
-    out(['ok' => true]);
+    out(['ok' => true, 'message' => "User $action_text successfully"]);
+    
   } catch (PDOException $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+      $pdo->rollBack();
+    }
     out(['ok' => false, 'error' => $e->getMessage()]);
   }
 }
 
 if ($action === 'delete_user') {
   try {
-    $get_person = $pdo->prepare("SELECT person_id, username FROM tbl_users WHERE user_id=?");
-    $get_person->execute([$input['user_id']]);
-    $user_data = $get_person->fetch();
-    
-    if (!$user_data) {
-      out(['ok' => false, 'error' => 'User not found']);
-    }
+    $user_id_to_delete = (int)$input['user_id'];
     
     $pdo->beginTransaction();
     
-    // Delete user
-    $stmt = $pdo->prepare("DELETE FROM tbl_users WHERE user_id=?");
-    $stmt->execute([$input['user_id']]);
+    // Get person_id before deletion
+    $stmt = $pdo->prepare("SELECT person_id FROM tbl_users WHERE user_id = ?");
+    $stmt->execute([$user_id_to_delete]);
+    $person_id_to_delete = $stmt->fetchColumn();
     
-    // Delete person (if no other references)
-    $stmt = $pdo->prepare("DELETE FROM tbl_person WHERE person_id=?");
-    $stmt->execute([$user_data['person_id']]);
+    // Delete from tbl_users
+    $stmt = $pdo->prepare("DELETE FROM tbl_users WHERE user_id = ?");
+    $stmt->execute([$user_id_to_delete]);
+    
+    // Delete from tbl_person
+    if ($person_id_to_delete) {
+      $stmt = $pdo->prepare("DELETE FROM tbl_person WHERE person_id = ?");
+      $stmt->execute([$person_id_to_delete]);
+      
+      // Delete from tbl_team_athletes if exists
+      $stmt = $pdo->prepare("DELETE FROM tbl_team_athletes WHERE person_id = ?");
+      $stmt->execute([$person_id_to_delete]);
+    }
     
     $pdo->commit();
     
     logActivity($pdo, $user_id, $person_id, 'delete', 
-      "Deleted user: {$user_data['username']}");
+      "Deleted user (ID: $user_id_to_delete)");
     
-    out(['ok' => true]);
+    out(['ok' => true, 'message' => 'User deleted successfully']);
+    
   } catch (PDOException $e) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) {
+      $pdo->rollBack();
+    }
     out(['ok' => false, 'error' => $e->getMessage()]);
   }
 }
@@ -228,6 +388,21 @@ if ($action === 'delete_user') {
 // ==========================================
 // ACTIVITY LOGS
 // ==========================================
+
+
+if ($action === 'colleges') {
+  try {
+    $stmt = $pdo->query("
+      SELECT college_id, college_code, college_name, college_dean, is_active
+      FROM tbl_college 
+      WHERE is_active = 1
+      ORDER BY college_name
+    ");
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    out(['ok' => false, 'error' => $e->getMessage()]);
+  }
+}
 
 // Replace the logs and recent_activities sections in system_administrator/api.php
 
@@ -392,17 +567,32 @@ if ($action === 'delete_tournament') {
 
 if ($action === 'teams') {
   try {
-    $stmt = $pdo->query("
-      SELECT t.*, s.sports_name, 
-             COUNT(DISTINCT ta.person_id) as num_players
+    $sport_id = isset($_GET['sport_id']) ? (int)$_GET['sport_id'] : null;
+    
+    $sql = "
+      SELECT DISTINCT
+        t.team_id,
+        t.team_name,
+        s.sports_id,
+        s.sports_name
       FROM tbl_team t
       LEFT JOIN tbl_sports_team st ON st.team_id = t.team_id
       LEFT JOIN tbl_sports s ON s.sports_id = st.sports_id
-      LEFT JOIN tbl_team_athletes ta ON ta.team_id = t.team_id AND ta.is_active=1
-      GROUP BY t.team_id
-      ORDER BY s.sports_name, t.team_name
-    ");
-    out($stmt->fetchAll());
+      WHERE t.is_active = 1
+    ";
+    
+    $params = [];
+    
+    if ($sport_id) {
+      $sql .= " AND st.sports_id = :sport_id";
+      $params['sport_id'] = $sport_id;
+    }
+    
+    $sql .= " ORDER BY t.team_name";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     out(['ok' => false, 'error' => $e->getMessage()]);
   }

@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . "/../auth/guard.php";
-require_role("tournament_manager");
+require_role("Tournament manager");
 
 $full_name = $_SESSION['user']['full_name'] ?? 'Tournament Manager';
 $person_id = (int)$_SESSION['user']['person_id'];
@@ -43,19 +43,35 @@ $person_id = (int)$_SESSION['user']['person_id'];
       <span>Tournaments</span>
     </button>
     
-    <button class="nav-link" data-view="sports-select">
+    <button class="nav-link" data-view="teams">
+      <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7Zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5.784 6A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216ZM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+      </svg>
+      <span>Teams</span>
+    </button>
+    
+    <button class="nav-link" data-view="sports">
       <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
         <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
         <path d="M7 11.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 0 1h-1a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5z"/>
       </svg>
-      <span>Select Sports</span>
+      <span>Sports</span>
     </button>
-    
-    <button class="nav-link" data-view="team-select">
+
+    <button class="nav-link" data-view="athletes">
       <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7Zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5.784 6A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216ZM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
+        <path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/>
+        <path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2zm12 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1v-1c0-1-1-4-6-4s-6 3-6 4v1a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12z"/>
       </svg>
-      <span>Select Teams</span>
+      <span>Athletes</span>
+    </button>
+
+
+        <button class="nav-link" data-view="athlete-approval">
+      <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+      </svg>
+      <span>Approve Athletes</span>
     </button>
     
     <button class="nav-link" data-view="matches">
@@ -159,93 +175,145 @@ $person_id = (int)$_SESSION['user']['person_id'];
       </div>
     </div>
 
-    <div class="overview-section">
-      <h2>Quick Actions</h2>
-      <div class="data-grid" style="margin-top:12px;">
-        <div class="data-card" onclick="setTab('tournaments')" style="cursor:pointer;">
-          <div class="data-card-header">
-            <div class="data-card-title">Create Tournament</div>
-            <span style="font-size:24px;">➕</span>
-          </div>
-          <div class="data-card-meta">Set up a new tournament with sports and teams</div>
-        </div>
-        <div class="data-card" onclick="setTab('matches')" style="cursor:pointer;">
-          <div class="data-card-header">
-            <div class="data-card-title">Schedule Match</div>
-            <span style="font-size:24px;">📅</span>
-          </div>
-          <div class="data-card-meta">Create and manage tournament matches</div>
-        </div>
-        <div class="data-card" onclick="setTab('scoring')" style="cursor:pointer;">
-          <div class="data-card-header">
-            <div class="data-card-title">Enter Scores</div>
-            <span style="font-size:24px;">⭐</span>
-          </div>
-          <div class="data-card-meta">Record match results and declare winners</div>
-        </div>
+<div class="overview-section">
+  <h2>Quick Actions</h2>
+  <div class="data-grid" style="margin-top:12px;">
+    <div class="data-card" onclick="setTab('tournaments')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">Create Tournament</div>
+        <span style="font-size:24px;">➕</span>
       </div>
+      <div class="data-card-meta">Set up a new tournament with sports and teams</div>
     </div>
+    
+    <!-- NEW CARD -->
+    <div class="data-card" onclick="setTab('register-teams')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">Register Teams</div>
+        <span style="font-size:24px;">👥</span>
+      </div>
+      <div class="data-card-meta">Create and manage school teams</div>
+    </div>
+    
+    <!-- NEW CARD -->
+    <div class="data-card" onclick="setTab('register-players')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">Register Players</div>
+        <span style="font-size:24px;">🎽</span>
+      </div>
+      <div class="data-card-meta">Add athletes and assign them to teams</div>
+    </div>
+    
+    <div class="data-card" onclick="setTab('matches')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">Schedule Match</div>
+        <span style="font-size:24px;">📅</span>
+      </div>
+      <div class="data-card-meta">Create and manage tournament matches</div>
+    </div>
+    
+    <div class="data-card" onclick="setTab('scoring')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">Enter Scores</div>
+        <span style="font-size:24px;">⭐</span>
+      </div>
+      <div class="data-card-meta">Record match results and winners</div>
+    </div>
+    
+    <div class="data-card" onclick="setTab('standings')" style="cursor:pointer;">
+      <div class="data-card-header">
+        <div class="data-card-title">View Standings</div>
+        <span style="font-size:24px;">📊</span>
+      </div>
+      <div class="data-card-meta">Check team rankings and statistics</div>
+    </div>
+  </div>
+</div>
   </section>
 
   <!-- TOURNAMENTS VIEW -->
   <section class="content-view" id="tournaments-view">
-    <div class="view-header">
-      <button class="btn btn-primary" onclick="showTournamentModal()">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-          <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
-        </svg>
-        Create Tournament
-      </button>
-    </div>
     <div id="tournamentsContent">
       <div class="loading">Loading tournaments...</div>
     </div>
   </section>
 
-  <!-- SPORTS SELECTION VIEW -->
-  <section class="content-view" id="sports-select-view">
-    <div class="card">
-      <div class="form-group">
-        <label class="form-label">Select Tournament</label>
-        <select id="sportsTourSelect" class="form-control">
-          <option value="">-- Select Tournament --</option>
-        </select>
-      </div>
+  <!-- TEAMS VIEW -->
+  <section class="content-view" id="teams-view">
+    <div class="view-header">
+      <h2 style="font-size: 16px; font-weight: 600;">Manage Teams</h2>
+    </div>
+    
+    <div class="form-group" style="max-width: 400px; margin-bottom: 20px;">
+      <label class="form-label">Select Tournament</label>
+      <select id="teamsFilterTournament" class="form-control">
+        <option value="">-- Select Tournament --</option>
+      </select>
+    </div>
 
-      <div id="selectedSportsArea" style="margin-top:20px;">
-        <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;">Sports in This Tournament</h4>
-        <div id="tournamentSportsList">
-          <p class="empty-state">Select a tournament to view its sports</p>
-        </div>
-      </div>
-
-      <div id="sportsSelectionArea" style="display:none;margin-top:24px;">
-        <h4 style="font-size:15px;font-weight:600;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid var(--border);">Available Sports - Select to Add</h4>
-        <div id="sportsList" class="sports-grid"></div>
-        <button class="btn btn-success" id="confirmSportsBtn" style="margin-top:16px;">
-          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
-          </svg>
-          Confirm Selected Sports
-        </button>
-        <div class="msg" id="sportsMsg"></div>
-      </div>
+    <div id="teamsContent">
+      <div class="empty-state">Select a tournament to view and manage teams</div>
     </div>
   </section>
 
-  <!-- TEAM SELECTION VIEW -->
-  <section class="content-view" id="team-select-view">
-    <div class="card">
+  <!-- SPORTS VIEW -->
+  <section class="content-view" id="sports-view">
+    <div class="view-header">
+      <h2 style="font-size: 16px; font-weight: 600;">Manage Sports</h2>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 800px; margin-bottom: 20px;">
       <div class="form-group">
         <label class="form-label">Select Tournament</label>
-        <select id="teamsTourSelect" class="form-control">
+        <select id="sportsFilterTournament" class="form-control">
           <option value="">-- Select Tournament --</option>
         </select>
       </div>
-
-      <div id="teamsSelectionArea" style="display:none;margin-top:20px;">
-        <div id="sportTeamsContainer"></div>
+      
+      <div class="form-group">
+        <label class="form-label">Select Team</label>
+        <select id="sportsFilterTeam" class="form-control" disabled>
+          <option value="">-- Select Team --</option>
+        </select>
       </div>
+    </div>
+
+    <div id="sportsContent">
+      <div class="empty-state">Select a tournament and team to view and manage sports</div>
+    </div>
+  </section>
+
+  <!-- ATHLETES VIEW -->
+  <section class="content-view" id="athletes-view">
+    <div class="view-header">
+      <h2 style="font-size: 16px; font-weight: 600;">Manage Athletes</h2>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-width: 1000px; margin-bottom: 20px;">
+      <div class="form-group">
+        <label class="form-label">Select Tournament</label>
+        <select id="athletesFilterTournament" class="form-control">
+          <option value="">-- Select Tournament --</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Select Team</label>
+        <select id="athletesFilterTeam" class="form-control" disabled>
+          <option value="">-- Select Team --</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Select Sport</label>
+        <select id="athletesFilterSport" class="form-control" disabled>
+          <option value="">-- Select Sport --</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="athletesContent">
+      <div class="empty-state">Select tournament, team, and sport to view and manage athletes</div>
     </div>
   </section>
 
@@ -448,15 +516,114 @@ $person_id = (int)$_SESSION['user']['person_id'];
   <!-- VENUES VIEW -->
   <section class="content-view" id="venues-view">
     <div class="view-header">
-      <button class="btn btn-primary" onclick="showVenueModal()">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-          <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
-        </svg>
-        Add Venue
-      </button>
+
     </div>
     <div id="venuesContent">
       <div class="loading">Loading venues...</div>
+    </div>
+  </section>
+
+  <!-- REGISTER TEAMS VIEW -->
+<section class="content-view" id="register-teams-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showRegisterTeamModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Register New Team
+    </button>
+  </div>
+  <div id="teamsListContent">
+    <div class="loading">Loading teams...</div>
+  </div>
+</section>
+
+<!-- REGISTER PLAYERS VIEW -->
+<section class="content-view" id="register-players-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showRegisterPlayerModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Register New Player
+    </button>
+  </div>
+  
+  <div class="form-group" style="max-width: 400px; margin-bottom: 20px;">
+    <label class="form-label">Filter by Team</label>
+    <select id="playerFilterTeam" class="form-control" onchange="loadPlayersFilter()">
+      <option value="">-- All Teams --</option>
+    </select>
+  </div>
+
+  <div id="playersListContent">
+    <div class="loading">Loading players...</div>
+  </div>
+</section>
+
+  <section class="content-view" id="athlete-approval-view">
+    <div class="view-header">
+      <h2 style="font-size: 16px; font-weight: 600;">Athlete Approval & Disqualification</h2>
+    </div>
+    
+    <div class="form-group" style="max-width: 400px; margin-bottom: 20px;">
+      <label class="form-label">Filter by Tournament</label>
+      <select id="approvalFilterTournament" class="form-control" onchange="loadPendingAthletes()">
+        <option value="">-- All Tournaments --</option>
+      </select>
+    </div>
+
+    <!-- Tabs -->
+    <div style="border-bottom: 2px solid var(--border); margin-bottom: 20px;">
+      <div style="display: flex; gap: 4px;">
+        <button class="approval-tab active" data-tab="pending" onclick="switchApprovalTab('pending')" style="padding: 10px 20px; border: none; background: none; cursor: pointer; font-weight: 600; font-size: 13px; border-bottom: 3px solid transparent; color: var(--text-muted);">
+          Pending Approval
+          <span id="pendingCount" style="background: #fbbf24; color: #78350f; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 6px;">0</span>
+        </button>
+        <button class="approval-tab" data-tab="approved" onclick="switchApprovalTab('approved')" style="padding: 10px 20px; border: none; background: none; cursor: pointer; font-weight: 600; font-size: 13px; border-bottom: 3px solid transparent; color: var(--text-muted);">
+          Approved Athletes
+          <span id="approvedCount" style="background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-left: 6px;">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Pending Athletes Content -->
+    <div id="pendingAthletesContent" class="approval-content active">
+      <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        <p style="margin: 0; font-size: 13px; color: #92400e;">
+          <strong>⚠️ Review Required:</strong> These athletes have been submitted by coaches and require your approval before they can participate in matches.
+        </p>
+      </div>
+      
+      <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+        <button class="btn btn-success" onclick="bulkApproveAthletes()" id="bulkApproveBtn" disabled>
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425a.267.267 0 0 1 .02-.022z"/>
+          </svg>
+          Approve Selected
+        </button>
+        <label style="font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <input type="checkbox" id="selectAllPending" onchange="toggleSelectAll('pending')" style="width: 16px; height: 16px;">
+          Select All
+        </label>
+      </div>
+      
+      <div id="pendingAthletesList">
+        <div class="loading">Loading pending athletes...</div>
+      </div>
+    </div>
+
+    <!-- Approved Athletes Content -->
+    <div id="approvedAthletesContent" class="approval-content" style="display: none;">
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+        <p style="margin: 0; font-size: 13px; color: #166534;">
+          <strong>✅ Approved Athletes:</strong> These athletes have been approved and can participate in matches.
+        </p>
+      </div>
+      
+      <div id="approvedAthletesList">
+        <div class="loading">Loading approved athletes...</div>
+      </div>
     </div>
   </section>
 
@@ -558,6 +725,8 @@ $person_id = (int)$_SESSION['user']['person_id'];
       <button class="btn btn-primary" id="generatePrintBtn" onclick="generatePrintReport()" disabled>Generate Report</button>
     </div>
   </div>
+
+  
 </div>
 
 <!-- PRINT PREVIEW AREA (Hidden until generated) -->

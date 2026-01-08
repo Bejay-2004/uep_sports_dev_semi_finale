@@ -1,25 +1,74 @@
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-const sportsId = window.SPECTATOR_CONTEXT.sports_id; // Will be 0 for spectators (view all sports)
+const personId = window.SPECTATOR_CONTEXT.person_id;
+const sportsId = window.SPECTATOR_CONTEXT.sports_id;
 
-// Tab Navigation
-$$('.nav-item').forEach(btn => {
+// ==========================================
+// NAVIGATION
+// ==========================================
+
+// Sidebar navigation
+$$('.nav-link').forEach(btn => {
   btn.addEventListener('click', () => {
-    $$('.nav-item').forEach(b => b.classList.remove('active'));
+    // Update nav
+    $$('.nav-link').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     
-    const tabId = btn.dataset.tab;
-    $$('.tab-panel').forEach(p => p.classList.remove('active'));
-    $(`#${tabId}`).classList.add('active');
+    // Update views
+    const viewId = btn.dataset.view + '-view';
+    $$('.content-view').forEach(v => v.classList.remove('active'));
+    $(`#${viewId}`).classList.add('active');
+    
+    // Update page title
+    const titles = {
+      'overview': 'Dashboard Overview',
+      'matches': 'Match Schedule',
+      'standings': 'Team Rankings',
+      'teams': 'Teams & Players',
+      'tournaments': 'All Tournaments',
+      'sports': 'All Sports'
+    };
+    $('#pageTitle').textContent = titles[btn.dataset.view] || 'Dashboard';
+    
+    // Load data for the view
+    if (btn.dataset.view === 'matches') {
+      loadMatchesGrouped();
+    } else if (btn.dataset.view === 'standings') {
+      $('#standingsContent').innerHTML = '<div class="empty-state">Select tournament and sport to view standings</div>';
+    } else if (btn.dataset.view === 'teams') {
+      loadTeams();
+    }
   });
 });
 
-// API Helper
-async function fetchJSON(action) {
+// Mobile menu toggle
+$('#menuToggle')?.addEventListener('click', () => {
+  $('.sidebar').classList.toggle('active');
+  $('#sidebarOverlay').classList.toggle('active');
+});
+
+$('#sidebarOverlay')?.addEventListener('click', () => {
+  $('.sidebar').classList.remove('active');
+  $('#sidebarOverlay').classList.remove('active');
+});
+
+// ==========================================
+// API HELPER - FIXED VERSION
+// ==========================================
+
+async function fetchJSON(action, params = {}) {
   try {
-    const url = `api.php?action=${encodeURIComponent(action)}`;
-    console.log('🔍 Fetching:', url);
+    let url = `api.php?action=${encodeURIComponent(action)}`;
+    
+    // Add additional parameters
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== '') {
+        url += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+      }
+    }
+    
+    console.log('📡 Fetching:', url);
     const res = await fetch(url);
     
     if (!res.ok) {
@@ -27,7 +76,7 @@ async function fetchJSON(action) {
     }
     
     const data = await res.json();
-    console.log('✅ Response:', data);
+    console.log('✅ Response:', action, data);
     return data;
   } catch (err) {
     console.error('❌ fetchJSON error:', err);
@@ -42,16 +91,19 @@ function escapeHtml(s) {
 }
 
 // ==========================================
-// LOAD TOURNAMENTS (for filters)
+// LOAD TOURNAMENTS
 // ==========================================
 
 async function loadTournaments() {
   try {
     const data = await fetchJSON('tournaments');
     
-    // Populate all tournament filters
+    // Update stats
+    $('#statTournaments').textContent = data.length;
+    
+    // Populate filters
     const tournamentFilters = [
-      '#homeTournamentFilter',
+      '#overviewTournamentFilter',
       '#matchTournamentFilter',
       '#standingTournamentFilter'
     ];
@@ -59,6 +111,7 @@ async function loadTournaments() {
     tournamentFilters.forEach(selector => {
       const select = $(selector);
       if (select && data.length > 0) {
+        select.innerHTML = '<option value="">All Tournaments</option>';
         const options = data.map(t => 
           `<option value="${t.tour_id}">${escapeHtml(t.tour_name)} - ${escapeHtml(t.school_year)}</option>`
         ).join('');
@@ -66,21 +119,53 @@ async function loadTournaments() {
       }
     });
     
+    // Render on Tournaments view
+    const tournamentsContent = $('#tournamentsContent');
+    if (!data || data.length === 0) {
+      tournamentsContent.innerHTML = '<div class="empty-state">No tournaments available</div>';
+    } else {
+      tournamentsContent.innerHTML = data.map(t => renderTournamentCard(t)).join('');
+    }
+    
     console.log('✅ Tournaments loaded:', data.length);
   } catch (err) {
     console.error('❌ loadTournaments error:', err);
+    $('#tournamentsContent').innerHTML = '<div class="empty-state">Error loading tournaments</div>';
   }
 }
 
+function renderTournamentCard(tournament) {
+  const date = new Date(tournament.tour_date);
+  const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  
+  return `
+    <div class="data-card">
+      <div class="data-card-header">
+        <div class="data-card-title">${escapeHtml(tournament.tour_name)}</div>
+        <span class="match-status active">Active</span>
+      </div>
+      <div class="data-card-body">
+        <div class="data-card-meta">📅 ${formattedDate}</div>
+        <div class="data-card-meta">🎓 ${escapeHtml(tournament.school_year)}</div>
+        ${tournament.match_count ? `<div class="data-card-meta">🏆 ${tournament.match_count} matches</div>` : ''}
+        ${tournament.sports_count ? `<div class="data-card-meta">⚽ ${tournament.sports_count} sports</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 // ==========================================
-// LOAD SPORTS (for filters)
+// LOAD SPORTS
 // ==========================================
 
 async function loadSports() {
   try {
     const data = await fetchJSON('sports');
     
-    // Populate sport filters
+    // Update stats
+    $('#statSports').textContent = data.length;
+    
+    // Populate filters
     const sportFilters = [
       '#matchSportFilter',
       '#standingSportFilter',
@@ -90,6 +175,7 @@ async function loadSports() {
     sportFilters.forEach(selector => {
       const select = $(selector);
       if (select && data.length > 0) {
+        select.innerHTML = '<option value="">All Sports</option>';
         const options = data.map(s => 
           `<option value="${s.sports_id}">${escapeHtml(s.sports_name)}</option>`
         ).join('');
@@ -97,53 +183,78 @@ async function loadSports() {
       }
     });
     
+    // Render on Sports view
+    const sportsContent = $('#sportsContent');
+    if (!data || data.length === 0) {
+      sportsContent.innerHTML = '<div class="empty-state">No sports available</div>';
+    } else {
+      sportsContent.innerHTML = data.map(s => renderSportCard(s)).join('');
+    }
+    
     console.log('✅ Sports loaded:', data.length);
   } catch (err) {
     console.error('❌ loadSports error:', err);
+    $('#sportsContent').innerHTML = '<div class="empty-state">Error loading sports</div>';
   }
 }
 
+function renderSportCard(sport) {
+  const typeBadge = sport.team_individual === 'team' ? 'Team Sport' : 'Individual';
+  
+  return `
+    <div class="data-card">
+      <div class="data-card-header">
+        <div class="data-card-title">${escapeHtml(sport.sports_name)}</div>
+        <span class="match-status upcoming">${typeBadge}</span>
+      </div>
+      <div class="data-card-body">
+        <div class="data-card-meta">${sport.men_women ? escapeHtml(sport.men_women) : 'All Genders'}</div>
+        ${sport.team_count ? `<div class="data-card-meta">👥 ${sport.team_count} teams</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 // ==========================================
-// LOAD MATCHES (with grouping)
+// LOAD MATCHES - FIXED
 // ==========================================
 
-$('#homeTournamentFilter')?.addEventListener('change', (e) => {
-  loadHomeMatches(e.target.value);
+$('#overviewTournamentFilter')?.addEventListener('change', (e) => {
+  loadOverviewMatches(e.target.value);
 });
 
 $('#matchTournamentFilter')?.addEventListener('change', loadMatchesGrouped);
 $('#matchSportFilter')?.addEventListener('change', loadMatchesGrouped);
 
-async function loadHomeMatches(tourId = null) {
+async function loadOverviewMatches(tourId = null) {
   try {
-    let url = 'matches';
-    if (tourId) url += `&tour_id=${tourId}`;
+    const params = {};
+    if (tourId) params.tour_id = tourId;
     
-    const data = await fetchJSON(url);
-    const list = $('#homeMatchesList');
+    const data = await fetchJSON('matches', params);
     
-    if (!data || data.length === 0) {
-      list.innerHTML = '<div class="empty-state">No matches scheduled</div>';
+    // Update stats - count upcoming matches
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const upcoming = data.filter(m => {
+      const matchDate = new Date(m.sked_date);
+      matchDate.setHours(0, 0, 0, 0);
+      return matchDate >= today;
+    });
+    $('#statMatches').textContent = upcoming.length;
+    
+    // Render on Overview (upcoming only, max 5)
+    const overviewMatches = $('#overviewMatches');
+    if (upcoming.length === 0) {
+      overviewMatches.innerHTML = '<div class="empty-state">No upcoming matches</div>';
     } else {
-      // Show only upcoming/live matches on home
-      const upcoming = data.filter(m => {
-        const matchDate = new Date(m.sked_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return matchDate >= today;
-      }).slice(0, 5);
-      
-      if (upcoming.length === 0) {
-        list.innerHTML = '<div class="empty-state">No upcoming matches</div>';
-      } else {
-        list.innerHTML = upcoming.map(m => renderMatchCard(m)).join('');
-      }
+      overviewMatches.innerHTML = upcoming.slice(0, 5).map(m => renderMatchCard(m)).join('');
     }
     
-    console.log('✅ Home matches loaded:', data.length);
+    console.log('✅ Overview matches loaded:', data.length);
   } catch (err) {
-    console.error('❌ loadHomeMatches error:', err);
-    $('#homeMatchesList').innerHTML = '<div class="empty-state">Error loading matches</div>';
+    console.error('❌ loadOverviewMatches error:', err);
+    $('#overviewMatches').innerHTML = '<div class="empty-state">Error loading matches</div>';
   }
 }
 
@@ -152,324 +263,288 @@ async function loadMatchesGrouped() {
     const tourId = $('#matchTournamentFilter')?.value || '';
     const sportId = $('#matchSportFilter')?.value || '';
     
-    let url = 'matches';
-    const params = [];
-    if (tourId) params.push(`tour_id=${tourId}`);
-    if (sportId) params.push(`sport_id=${sportId}`);
-    if (params.length > 0) url += '&' + params.join('&');
+    const params = {};
+    if (tourId) params.tour_id = tourId;
+    if (sportId) params.sport_id = sportId;
     
-    const data = await fetchJSON(url);
-    const list = $('#matchesGroupedList');
+    const data = await fetchJSON('matches', params);
+    const content = $('#matchesContent');
     
     if (!data || data.length === 0) {
-      list.innerHTML = '<div class="empty-state">No matches found</div>';
+      content.innerHTML = '<div class="empty-state">No matches found</div>';
       return;
     }
     
-    // Group by tournament, then by sport
-    const grouped = {};
-    data.forEach(match => {
-      const tourKey = match.tour_name || 'No Tournament';
-      const sportKey = match.sports_name || 'No Sport';
-      
-      if (!grouped[tourKey]) grouped[tourKey] = {};
-      if (!grouped[tourKey][sportKey]) grouped[tourKey][sportKey] = [];
-      
-      grouped[tourKey][sportKey].push(match);
-    });
-    
-    // Render grouped matches
-    let html = '';
-    Object.keys(grouped).sort().forEach(tourName => {
-      Object.keys(grouped[tourName]).sort().forEach(sportName => {
-        const matches = grouped[tourName][sportName];
-        html += `
-          <div class="group-header">
-            <h4 class="group-title">${escapeHtml(tourName)} • ${escapeHtml(sportName)}</h4>
-            <span class="group-badge">${matches.length} match${matches.length !== 1 ? 'es' : ''}</span>
-          </div>
-          <div class="matches-list">
-            ${matches.map(m => renderMatchCard(m)).join('')}
-          </div>
-        `;
-      });
-    });
-    
-    list.innerHTML = html;
-    console.log('✅ Grouped matches loaded:', data.length);
+    content.innerHTML = data.map(m => renderMatchCard(m, true)).join('');
+    console.log('✅ Matches loaded:', data.length);
   } catch (err) {
     console.error('❌ loadMatchesGrouped error:', err);
-    $('#matchesGroupedList').innerHTML = '<div class="empty-state">Error loading matches</div>';
+    $('#matchesContent').innerHTML = '<div class="empty-state">Error loading matches</div>';
   }
 }
 
-function renderMatchCard(match) {
+function renderMatchCard(match, detailed = false) {
   const date = new Date(match.sked_date);
-  const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = match.sked_time || '';
   
-  // Determine match status
-  const now = new Date();
-  const matchDate = new Date(match.sked_date);
-  let status = 'upcoming';
+  const matchTypeLabels = {
+    'EL': 'Elimination',
+    'QF': 'Quarter Finals',
+    'SF': 'Semi Finals',
+    'F': 'Finals'
+  };
+  
+  const matchTypeLabel = matchTypeLabels[match.match_type] || match.match_type;
+  
+  let statusClass = 'upcoming';
   let statusText = 'Upcoming';
-  
   if (match.winner_id) {
-    status = 'finished';
-    statusText = 'Finished';
-  } else if (matchDate.toDateString() === now.toDateString()) {
-    status = 'live';
-    statusText = 'Today';
+    statusClass = 'completed';
+    statusText = 'Completed';
+  }
+  
+  let scoreDisplay = '';
+  if (match.team_a_score !== null && match.team_b_score !== null) {
+    scoreDisplay = `
+      <div style="text-align: center; margin: 10px 0; font-size: 24px; font-weight: bold; color: #333;">
+        ${match.team_a_score} - ${match.team_b_score}
+      </div>
+    `;
   }
   
   return `
     <div class="match-card">
-      <div class="match-card-header">
-        <div class="match-info">
-          <div class="match-tournament">${escapeHtml(match.tour_name || 'Tournament')}</div>
+      <div class="match-header">
+        <div>
           <div class="match-sport">${escapeHtml(match.sports_name)}</div>
+          ${match.tour_name ? `<div class="match-tournament">${escapeHtml(match.tour_name)}</div>` : ''}
         </div>
-        <div class="match-date-badge">
-          <div class="match-date">${dateStr}</div>
-          <div class="match-time">${match.sked_time || 'TBA'}</div>
-        </div>
+        <span class="match-status ${statusClass}">${statusText}</span>
       </div>
+      
       <div class="match-teams">
-        <div class="match-team">
-          <div class="match-team-name">${escapeHtml(match.team_a_name || 'TBA')}</div>
-          ${match.team_a_score !== null ? `<div class="match-team-score">${match.team_a_score}</div>` : ''}
+        <div class="team">
+          <div class="team-name">${escapeHtml(match.team_a_name || 'TBA')}</div>
         </div>
         <div class="match-vs">VS</div>
-        <div class="match-team">
-          <div class="match-team-name">${escapeHtml(match.team_b_name || 'TBA')}</div>
-          ${match.team_b_score !== null ? `<div class="match-team-score">${match.team_b_score}</div>` : ''}
+        <div class="team">
+          <div class="team-name">${escapeHtml(match.team_b_name || 'TBA')}</div>
         </div>
       </div>
+      
+      ${scoreDisplay}
+      
+      ${match.winner_name ? `
+        <div style="text-align: center; padding: 8px; background: #d4edda; border-radius: 4px; margin-top: 10px;">
+          🏆 Winner: <strong>${escapeHtml(match.winner_name)}</strong>
+        </div>
+      ` : ''}
+      
       <div class="match-details">
-        <div class="match-detail">📍 ${escapeHtml(match.venue_name || 'TBA')}</div>
-        <div class="match-detail">🏆 ${escapeHtml(match.match_type || 'Match')}</div>
-        <span class="match-status ${status}">${statusText}</span>
+        <div class="detail-item">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+          </svg>
+          ${formattedDate} ${time}
+        </div>
+        ${match.venue_name ? `
+          <div class="detail-item">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M12.166 8.94c-.524 1.062-1.234 2.12-1.96 3.07A31.493 31.493 0 0 1 8 14.58a31.481 31.481 0 0 1-2.206-2.57c-.726-.95-1.436-2.008-1.96-3.07C3.304 7.867 3 6.862 3 6a5 5 0 0 1 10 0c0 .862-.305 1.867-.834 2.94zM8 16s6-5.686 6-10A6 6 0 0 0 2 6c0 4.314 6 10 6 10z"/>
+              <path d="M8 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm0 1a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+            </svg>
+            ${escapeHtml(match.venue_name)}
+          </div>
+        ` : ''}
+        ${match.match_type ? `
+          <div class="detail-item">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M2.5.5A.5.5 0 0 1 3 0h10a.5.5 0 0 1 .5.5c0 .538-.012 1.05-.034 1.536a3 3 0 1 1-1.133 5.89c-.79 1.865-1.878 2.777-2.833 3.011v2.173l1.425.356c.194.048.377.135.537.255L13.3 15.1a.5.5 0 0 1-.3.9H3a.5.5 0 0 1-.3-.9l1.838-1.379c.16-.12.343-.207.537-.255L6.5 13.11v-2.173c-.955-.234-2.043-1.146-2.833-3.012a3 3 0 1 1-1.132-5.89A33.076 33.076 0 0 1 2.5.5zm.099 2.54a2 2 0 0 0 .72 3.935c-.333-1.05-.588-2.346-.72-3.935zm10.083 3.935a2 2 0 0 0 .72-3.935c-.133 1.59-.388 2.885-.72 3.935z"/>
+            </svg>
+            ${matchTypeLabel}
+          </div>
+        ` : ''}
       </div>
     </div>
   `;
 }
 
 // ==========================================
-// LOAD STANDINGS (with grouping)
+// LOAD STANDINGS - FIXED
 // ==========================================
 
-$('#standingTournamentFilter')?.addEventListener('change', loadStandingsGrouped);
-$('#standingSportFilter')?.addEventListener('change', loadStandingsGrouped);
+$('#standingTournamentFilter')?.addEventListener('change', loadStandings);
+$('#standingSportFilter')?.addEventListener('change', loadStandings);
 
-async function loadHomeStandings() {
-  try {
-    const data = await fetchJSON('standings');
-    const list = $('#homeStandingsList');
-    
-    if (!data || data.length === 0) {
-      list.innerHTML = '<div class="empty-state">No standings available</div>';
-    } else {
-      // Show top 5 teams
-      list.innerHTML = '<div class="standings-list">' + 
-        data.slice(0, 5).map((s, idx) => renderStandingCard(s, idx + 1)).join('') +
-        '</div>';
-    }
-    
-    console.log('✅ Home standings loaded:', data.length);
-  } catch (err) {
-    console.error('❌ loadHomeStandings error:', err);
-    $('#homeStandingsList').innerHTML = '<div class="empty-state">Error loading standings</div>';
-  }
-}
-
-async function loadStandingsGrouped() {
+async function loadStandings() {
   try {
     const tourId = $('#standingTournamentFilter')?.value || '';
     const sportId = $('#standingSportFilter')?.value || '';
+    const content = $('#standingsContent');
     
     if (!tourId || !sportId) {
-      $('#standingsGroupedList').innerHTML = '<div class="empty-state">Please select both tournament and sport</div>';
+      content.innerHTML = '<div class="empty-state">Please select both tournament and sport to view standings</div>';
       return;
     }
     
-    const url = `standings&tour_id=${tourId}&sport_id=${sportId}`;
-    const data = await fetchJSON(url);
-    const list = $('#standingsGroupedList');
+    const params = { tour_id: tourId, sport_id: sportId };
+    const data = await fetchJSON('standings', params);
+    
+    // Also load standings for overview
+    if ($('#overviewStandings')) {
+      const overviewData = data.slice(0, 5); // Top 5 for overview
+      if (overviewData.length > 0) {
+        $('#overviewStandings').innerHTML = renderStandingsTable(overviewData);
+      }
+    }
     
     if (!data || data.length === 0) {
-      list.innerHTML = '<div class="empty-state">No standings available</div>';
+      content.innerHTML = '<div class="empty-state">No standings available for this combination</div>';
       return;
     }
     
-    list.innerHTML = '<div class="standings-list">' +
-      data.map((s, idx) => renderStandingCard(s, idx + 1)).join('') +
-      '</div>';
-    
+    content.innerHTML = renderStandingsTable(data);
     console.log('✅ Standings loaded:', data.length);
   } catch (err) {
-    console.error('❌ loadStandingsGrouped error:', err);
-    $('#standingsGroupedList').innerHTML = '<div class="empty-state">Error loading standings</div>';
+    console.error('❌ loadStandings error:', err);
+    $('#standingsContent').innerHTML = '<div class="empty-state">Error loading standings</div>';
   }
 }
 
-function renderStandingCard(standing, rank) {
-  let rankClass = '';
-  if (rank === 1) rankClass = 'gold';
-  else if (rank === 2) rankClass = 'silver';
-  else if (rank === 3) rankClass = 'bronze';
-  
-  const record = `${standing.no_win || 0}W - ${standing.no_loss || 0}L`;
-  const medals = `🥇${standing.no_gold || 0} 🥈${standing.no_silver || 0} 🥉${standing.no_bronze || 0}`;
-  
+function renderStandingsTable(standings) {
   return `
-    <div class="standing-card">
-      <div class="standing-rank ${rankClass}">${rank}</div>
-      <div class="standing-info">
-        <div class="standing-team">${escapeHtml(standing.team_name)}</div>
-        <div class="standing-sport">${escapeHtml(standing.sports_name)}</div>
-      </div>
-      <div class="standing-stats">
-        <div class="standing-record">${record}</div>
-        <div class="standing-medals">${medals}</div>
-      </div>
+    <div class="standings-table">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Team</th>
+            <th>P</th>
+            <th>W</th>
+            <th>L</th>
+            <th>D</th>
+            <th>Pts</th>
+            <th>🥇</th>
+            <th>🥈</th>
+            <th>🥉</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${standings.map((team, index) => `
+            <tr>
+              <td><strong>${index + 1}</strong></td>
+              <td><strong>${escapeHtml(team.team_name)}</strong></td>
+              <td>${team.no_games_played || 0}</td>
+              <td>${team.no_win || 0}</td>
+              <td>${team.no_loss || 0}</td>
+              <td>${team.no_draw || 0}</td>
+              <td><strong>${team.points || 0}</strong></td>
+              <td>${team.no_gold || 0}</td>
+              <td>${team.no_silver || 0}</td>
+              <td>${team.no_bronze || 0}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     </div>
   `;
 }
 
 // ==========================================
-// LOAD TEAMS (with grouping)
+// LOAD TEAMS - FIXED
 // ==========================================
 
-$('#teamSportFilter')?.addEventListener('change', loadTeamsGrouped);
+$('#teamSportFilter')?.addEventListener('change', loadTeams);
 
-async function loadTeamsGrouped() {
+async function loadTeams() {
   try {
     const sportId = $('#teamSportFilter')?.value || '';
+    const params = {};
+    if (sportId) params.sport_id = sportId;
     
-    let url = 'teams';
-    if (sportId) url += `&sport_id=${sportId}`;
+    const data = await fetchJSON('teams', params);
     
-    const data = await fetchJSON(url);
-    const list = $('#teamsGroupedList');
+    // Update stats
+    $('#statTeams').textContent = data.length;
     
+    const content = $('#teamsContent');
     if (!data || data.length === 0) {
-      list.innerHTML = '<div class="empty-state">No teams found</div>';
+      content.innerHTML = '<div class="empty-state">No teams found</div>';
       return;
     }
     
-    // Group by sport
-    const grouped = {};
-    data.forEach(team => {
-      const sportKey = team.sports_name || 'No Sport';
-      if (!grouped[sportKey]) grouped[sportKey] = [];
-      grouped[sportKey].push(team);
-    });
-    
-    // Render grouped teams
-    let html = '';
-    Object.keys(grouped).sort().forEach(sportName => {
-      const teams = grouped[sportName];
-      html += `
-        <div class="group-header">
-          <h4 class="group-title">${escapeHtml(sportName)}</h4>
-          <span class="group-badge">${teams.length} team${teams.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="teams-list">
-          ${teams.map(t => renderTeamCard(t)).join('')}
-        </div>
-      `;
-    });
-    
-    list.innerHTML = html;
-    console.log('✅ Grouped teams loaded:', data.length);
+    content.innerHTML = data.map(t => renderTeamCard(t)).join('');
+    console.log('✅ Teams loaded:', data.length);
   } catch (err) {
-    console.error('❌ loadTeamsGrouped error:', err);
-    $('#teamsGroupedList').innerHTML = '<div class="empty-state">Error loading teams</div>';
+    console.error('❌ loadTeams error:', err);
+    $('#teamsContent').innerHTML = '<div class="empty-state">Error loading teams</div>';
   }
 }
 
 function renderTeamCard(team) {
   return `
-    <div class="team-card">
-      <div class="team-card-header">
-        <div class="team-info">
-          <div class="team-name">${escapeHtml(team.team_name)}</div>
-          <div class="team-sport">${escapeHtml(team.sports_name)}</div>
-        </div>
-        <div class="team-badge">${team.num_players || 0} 👥</div>
+    <div class="data-card">
+      <div class="data-card-header">
+        <div class="data-card-title">${escapeHtml(team.team_name)}</div>
+        ${team.sports_name ? `<span class="match-status active">${escapeHtml(team.sports_name)}</span>` : ''}
       </div>
-      <div class="team-stats">
-        <div class="team-stat">
-          <div class="team-stat-value">${team.no_win || 0}</div>
-          <div class="team-stat-label">Wins</div>
-        </div>
-        <div class="team-stat">
-          <div class="team-stat-value">${team.no_loss || 0}</div>
-          <div class="team-stat-label">Losses</div>
-        </div>
-        <div class="team-stat">
-          <div class="team-stat-value">${(team.no_gold || 0) + (team.no_silver || 0) + (team.no_bronze || 0)}</div>
-          <div class="team-stat-label">Medals</div>
+      <div class="data-card-body">
+        ${team.school_name ? `<div class="data-card-meta">🏫 ${escapeHtml(team.school_name)}</div>` : ''}
+        ${team.coach_name ? `<div class="data-card-meta">👨‍🏫 Coach: ${escapeHtml(team.coach_name)}</div>` : ''}
+        ${team.player_count ? `<div class="data-card-meta">👥 ${team.player_count} players</div>` : ''}
+        <div class="data-card-stats">
+          <span>W: ${team.total_wins || 0}</span>
+          <span>L: ${team.total_losses || 0}</span>
+          <span>🥇${team.total_gold || 0}</span>
+          <span>🥈${team.total_silver || 0}</span>
+          <span>🥉${team.total_bronze || 0}</span>
         </div>
       </div>
     </div>
   `;
+}
+
+// ==========================================
+// LOAD STATS - NEW
+// ==========================================
+
+async function loadStats() {
+  try {
+    const data = await fetchJSON('stats');
+    
+    if (data.tournaments !== undefined) {
+      $('#statTournaments').textContent = data.tournaments;
+    }
+    if (data.sports !== undefined) {
+      $('#statSports').textContent = data.sports;
+    }
+    if (data.matches !== undefined) {
+      $('#statMatches').textContent = data.matches;
+    }
+    if (data.teams !== undefined) {
+      $('#statTeams').textContent = data.teams;
+    }
+    
+    console.log('✅ Stats loaded:', data);
+  } catch (err) {
+    console.error('❌ loadStats error:', err);
+  }
 }
 
 // ==========================================
 // INITIALIZE
 // ==========================================
 
-(async function init() {
-  console.log('🚀 Initializing spectator dashboard...');
-  console.log('⚽ Sports ID:', sportsId);
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('🚀 Spectator Dashboard Initializing...');
   
-  try {
-    // Load filters first
-    await Promise.all([
-      loadTournaments(),
-      loadSports()
-    ]);
-    
-    // Load initial data
-    await Promise.all([
-      loadHomeMatches(),
-      loadHomeStandings(),
-      loadMatchesGrouped(),
-      loadTeamsGrouped()
-    ]);
-    
-    console.log('✅ All data loaded');
-  } catch (err) {
-    console.error('❌ Initialization error:', err);
-  }
-})();
-
-// Add swipe gesture for tabs
-let touchStartX = 0;
-let touchEndX = 0;
-
-document.addEventListener('touchstart', e => {
-  touchStartX = e.changedTouches[0].screenX;
+  // Load all initial data
+  loadStats();
+  loadTournaments();
+  loadSports();
+  loadOverviewMatches();
+  loadTeams();
+  
+  console.log('✅ Dashboard Initialized');
 });
-
-document.addEventListener('touchend', e => {
-  touchEndX = e.changedTouches[0].screenX;
-  handleSwipe();
-});
-
-function handleSwipe() {
-  const swipeThreshold = 100;
-  const diff = touchStartX - touchEndX;
-  
-  if (Math.abs(diff) < swipeThreshold) return;
-  
-  const tabs = ['home', 'matches', 'standings', 'teams'];
-  const currentTab = $('.tab-panel.active').id;
-  const currentIndex = tabs.indexOf(currentTab);
-  
-  if (diff > 0 && currentIndex < tabs.length - 1) {
-    $(`.nav-item[data-tab="${tabs[currentIndex + 1]}"]`).click();
-  } else if (diff < 0 && currentIndex > 0) {
-    $(`.nav-item[data-tab="${tabs[currentIndex - 1]}"]`).click();
-  }
-}

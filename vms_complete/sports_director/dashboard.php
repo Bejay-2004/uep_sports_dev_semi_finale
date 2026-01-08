@@ -108,9 +108,24 @@ $sports_id = (int)($_SESSION['user']['sports_id'] ?? 0); // Will be NULL/0 for s
   <div class="top-bar">
     <h1 id="pageTitle">Overview</h1>
     <div class="top-bar-actions">
-      <select id="globalSportFilter" class="filter-select">
+      <select id="filterSchoolYear" class="filter-select">
+        <option value="">All School Years</option>
+      </select>
+      <select id="filterTournament" class="filter-select">
+        <option value="">All Tournaments</option>
+      </select>
+      <select id="filterTeam" class="filter-select">
+        <option value="">All Teams</option>
+      </select>
+      <select id="filterSport" class="filter-select">
         <option value="">All Sports</option>
       </select>
+      <button id="clearFilters" class="btn btn-secondary" style="display: none;">
+        <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+        </svg>
+        Clear
+      </button>
     </div>
   </div>
 
@@ -188,7 +203,7 @@ $sports_id = (int)($_SESSION['user']['sports_id'] ?? 0); // Will be NULL/0 for s
   <!-- ATHLETES VIEW -->
   <section class="content-view" id="athletes-view">
     <div class="view-header">
-      <button class="btn btn-primary" onclick="showAthleteModal()">
+      <button class="btn btn-primary" onclick="showAthleteContextModal()">
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
           <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
         </svg>

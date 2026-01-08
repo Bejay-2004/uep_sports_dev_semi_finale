@@ -10,8 +10,9 @@ if (isset($_SESSION['user']) && isset($_SESSION['user']['user_id'])) {
   // Redirect based on role (case-insensitive)
   if (strcasecmp($role, 'admin') === 0 || 
       strcasecmp($role, 'administrator') === 0 || 
-      strcasecmp($role, 'system administrator') === 0) {
-    header("Location: " . BASE_URL . "/admin/dashboard.php");
+      strcasecmp($role, 'system administrator') === 0 ||
+      strcasecmp($role, 'system_administrator') === 0) {
+    header("Location: " . BASE_URL . "/system_administrator/dashboard.php");
     exit;
   } elseif (strcasecmp($role, 'coach') === 0) {
     header("Location: " . BASE_URL . "/coach/dashboard.php");
@@ -19,7 +20,7 @@ if (isset($_SESSION['user']) && isset($_SESSION['user']['user_id'])) {
   } elseif (strcasecmp($role, 'Tournament manager') === 0) {
     header("Location: " . BASE_URL . "/tournament_manager/dashboard.php");
     exit;
-  } elseif (strcasecmp($role, 'sports director') === 0 || strcasecmp($role, 'sports_director') === 0) {
+  } elseif (strcasecmp($role, 'sports director') === 0 || strcasecmp($role, 'sports director') === 0) {
     header("Location: " . BASE_URL . "/sports_director/dashboard.php");
     exit;
   } elseif (strcasecmp($role, 'athlete/player') === 0 || strcasecmp($role, 'athlete') === 0) {
@@ -53,7 +54,6 @@ $error = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $username  = trim($_POST['username'] ?? '');
   $password  = trim($_POST['password'] ?? '');
-  $role_or_sport = trim($_POST['sports_id'] ?? '');
 
   if (!$username || !$password) {
     $error = "Username and password are required.";
@@ -77,33 +77,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->execute(['username' => $username]);
     $user = $stmt->fetch();
 
-    // Check password (plain text for now - should be hashed in production)
-    if (!$user || $user['password'] !== $password) {
+    // ==========================================
+    // ENHANCED PASSWORD VERIFICATION
+    // Handles both hashed AND plain-text passwords
+    // ==========================================
+    
+    $password_valid = false;
+    $needs_rehash = false;
+    
+    if ($user) {
+      $stored_password = $user['password'];
+      
+      // Check if password is hashed (bcrypt hashes start with $2y$ and are 60 chars)
+      if (strlen($stored_password) === 60 && substr($stored_password, 0, 4) === '$2y$') {
+        // This is a hashed password - use password_verify
+        $password_valid = password_verify($password, $stored_password);
+        
+        // Check if it needs rehashing (algorithm changed)
+        if ($password_valid && password_needs_rehash($stored_password, PASSWORD_DEFAULT)) {
+          $needs_rehash = true;
+        }
+      } else {
+        // This is a plain-text password - direct comparison
+        $password_valid = ($password === $stored_password);
+        
+        // Mark for rehashing since it's plain text
+        if ($password_valid) {
+          $needs_rehash = true;
+        }
+      }
+    }
+
+    // Check credentials
+    if (!$user || !$password_valid) {
       $error = "Invalid username or password.";
     } elseif ($user['is_active'] != 1) {
       $error = "Your account has been deactivated.";
     } else {
+      
+      // ==========================================
+      // AUTOMATIC PASSWORD REHASHING
+      // Converts plain-text to hashed on successful login
+      // ==========================================
+      
+      if ($needs_rehash) {
+        try {
+          $new_hash = password_hash($password, PASSWORD_DEFAULT);
+          $update_stmt = $pdo->prepare("UPDATE tbl_users SET password = ? WHERE user_id = ?");
+          $update_stmt->execute([$new_hash, $user['user_id']]);
+          error_log("Password rehashed for user: {$user['username']}");
+        } catch (PDOException $e) {
+          // Log error but don't block login
+          error_log("Failed to rehash password for user {$user['username']}: " . $e->getMessage());
+        }
+      }
+      
+      // ==========================================
+      // SPORT DETECTION (FOLLOWING GUARD.PHP RULES)
+      // ==========================================
+      
       $role = trim($user['user_role']);
       $sports_id = null;
 
-      // ==========================================
-      // AUTO-DETECT SPORT FROM DATABASE
-      // ==========================================
-
-      // Normalize role for comparison
+      // Normalize role for comparison (EXACT same as guard.php)
       $normalized_role = strtolower(str_replace(['/', ' '], '_', $role));
 
-      // Management roles (no sport needed)
-      $no_sport_roles = ['tournament_manager', 'sports_director', 'admin', 'administrator', 'system_administrator', 'spectator'];
+      // ==========================================
+      // ROLES THAT DON'T NEED SPORTS_ID
+      // (MUST match guard.php exactly!)
+      // ==========================================
+      $no_sport_roles = [
+        'Tournament manager',
+        'sports director',      // Handles both 'sports director' and 'sports_director'
+        'admin',                // System administrator (short form)
+        'administrator',        // Alias for admin
+        'system_administrator', // Handles 'system_administrator' from DB
+        'spectator'             // Spectators can view ALL sports
+      ];
 
+      // ==========================================
+      // ROLES THAT DO NEED SPORTS_ID
+      // (MUST match guard.php exactly!)
+      // ==========================================
+      $sport_required_roles = [
+        'coach',
+        'athlete',
+        'athlete_player',  // Handles 'athlete/player' from DB
+        'trainee',
+        'trainor',
+        'umpire',
+        'scorer'
+      ];
+
+      // Check if this role requires a sport
       if (in_array($normalized_role, $no_sport_roles)) {
-        // Management/Spectator roles don't need sport
+        // This role does NOT need sports_id - set to null
         $sports_id = null;
-      } else {
-        // For other roles, auto-detect sport from database
+        
+      } elseif (in_array($normalized_role, $sport_required_roles)) {
+        // This role DOES need sports_id - try to detect it
         
         // Try to get sport from various tables based on role
-        if (strcasecmp($role, 'coach') === 0) {
+        if ($normalized_role === 'coach') {
           // Get coach's sport from tbl_sports_team
           $sport_stmt = $pdo->prepare("
             SELECT sports_id 
@@ -131,8 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sports_id = (int)$sport_row['sports_id'];
           }
         }
-        // TRAINEE - separate logic
-        elseif (strcasecmp($role, 'trainee') === 0) {
+        elseif ($normalized_role === 'trainee') {
+          // Get trainee's sport from tbl_team_trainees
           $sport_stmt = $pdo->prepare("
             SELECT st.sports_id
             FROM tbl_team_trainees tt
@@ -147,8 +222,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sports_id = (int)$sport_row['sports_id'];
           }
         }
-        // TRAINOR - get from tbl_sports_team
-        elseif (strcasecmp($role, 'trainor') === 0) {
+        elseif ($normalized_role === 'trainor') {
+          // Get trainor's sport from tbl_sports_team
           $sport_stmt = $pdo->prepare("
             SELECT sports_id
             FROM tbl_sports_team
@@ -164,9 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sports_id = (int)$sport_row['sports_id'];
           }
         }
-        
-        elseif (in_array($normalized_role, ['umpire'])) {
-          // Get sport from match assignments or recent activity
+        elseif ($normalized_role === 'umpire') {
+          // Get umpire's sport from match assignments
           $sport_stmt = $pdo->prepare("
             SELECT sports_id 
             FROM tbl_match 
@@ -180,11 +254,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $sports_id = (int)$sport_row['sports_id'];
           }
         }
+        elseif ($normalized_role === 'scorer') {
+          // Scorer might be assigned through matches or tournaments
+          // Try to find from recent match activity
+          $sport_stmt = $pdo->prepare("
+            SELECT sports_id 
+            FROM tbl_match 
+            WHERE match_sports_manager_id = :pid 
+            ORDER BY sked_date DESC
+            LIMIT 1
+          ");
+          $sport_stmt->execute(['pid' => $user['person_id']]);
+          $sport_row = $sport_stmt->fetch();
+          if ($sport_row) {
+            $sports_id = (int)$sport_row['sports_id'];
+          }
+        }
 
-        // If sport not found but role requires it, show error
+        // If sport not found for a role that requires it, show error
         if ($sports_id === null || $sports_id <= 0) {
           $error = "Your account is not assigned to any sport. Please contact administrator.";
         }
+        
+      } else {
+        // Unknown role - treat as no sport required
+        $sports_id = null;
       }
 
       // If no errors, create session
@@ -205,19 +299,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Redirect based on role (case-insensitive comparison)
         if (strcasecmp($role, 'admin') === 0 || 
             strcasecmp($role, 'administrator') === 0 || 
-            strcasecmp($role, 'system administrator') === 0) {
+            strcasecmp($role, 'system administrator') === 0 ||
+            strcasecmp($role, 'system_administrator') === 0) {
           header("Location: " . BASE_URL . "/system_administrator/dashboard.php");
           exit;
         } elseif (strcasecmp($role, 'coach') === 0) {
           header("Location: " . BASE_URL . "/coach/dashboard.php");
           exit;
-        } elseif (strcasecmp($role, 'Tournament manager') === 0) {
+        } elseif (strcasecmp($role, 'Tournament manager') === 0 || strcasecmp($role, 'Tournament manager') === 0) {
           header("Location: " . BASE_URL . "/tournament_manager/dashboard.php");
           exit;
-        } elseif (strcasecmp($role, 'sports director') === 0 || strcasecmp($role, 'sports_director') === 0) {
+        } elseif (strcasecmp($role, 'sports director') === 0 || strcasecmp($role, 'sports director') === 0) {
           header("Location: " . BASE_URL . "/sports_director/dashboard.php");
           exit;
-        } elseif (strcasecmp($role, 'athlete/player') === 0 || strcasecmp($role, 'athlete') === 0) {
+        } elseif (strcasecmp($role, 'athlete/player') === 0 || strcasecmp($role, 'athlete') === 0 || strcasecmp($role, 'athlete_player') === 0) {
           header("Location: " . BASE_URL . "/athlete/dashboard.php");
           exit;
         } elseif (strcasecmp($role, 'trainee') === 0) {
@@ -232,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strcasecmp($role, 'scorer') === 0) {
           header("Location: " . BASE_URL . "/scorer/dashboard.php");
           exit;
-        } elseif (strcasecmp($role, 'Spectator') === 0) {
+        } elseif (strcasecmp($role, 'Spectator') === 0 || strcasecmp($role, 'spectator') === 0) {
           header("Location: " . BASE_URL . "/spectator/dashboard.php");
           exit;
         } else {
@@ -242,8 +337,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
-
-// No need to load sports list - auto-detected from database
 ?>
 <!DOCTYPE html>
 <html>
@@ -252,11 +345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <title>Login - UEP Sports Management</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  /* ===== RESET ===== */
-  * {
-    box-sizing: border-box;
-  }
-
+  * { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
@@ -268,26 +357,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     padding: 16px;
     color: #111827;
   }
-
-  .header {
-    text-align: center;
-    margin-bottom: 16px;
-  }
-
-  .header h1 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 600;
-    color: #111827;
-  }
-
-  .header p {
-    margin-top: 4px;
-    font-size: 13px;
-    color: #6b7280;
-  }
-
-  /* ===== CARD ===== */
+  .header { text-align: center; margin-bottom: 16px; }
+  .header h1 { margin: 0; font-size: 22px; font-weight: 600; color: #111827; }
+  .header p { margin-top: 4px; font-size: 13px; color: #6b7280; }
   .card {
     width: 100%;
     max-width: 400px;
@@ -296,23 +368,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     padding: 24px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
-
-  /* ===== HEADINGS ===== */
-  h2 {
-    margin: 0 0 6px;
-    font-size: 20px;
-    font-weight: 600;
-    color: #111827;
-  }
-
-  .subtitle {
-    margin: 0 0 16px;
-    font-size: 13px;
-    color: #6b7280;
-    line-height: 1.4;
-  }
-
-  /* ===== FORM LABELS ===== */
   label {
     display: block;
     margin-top: 14px;
@@ -320,10 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     font-weight: 500;
     color: #374151;
   }
-
-  /* ===== INPUTS ===== */
-  input,
-  select {
+  input {
     width: 100%;
     margin-top: 6px;
     padding: 10px 12px;
@@ -334,14 +386,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     background: #ffffff;
     color: #111827;
   }
-
-  input:focus,
-  select:focus {
-    outline: none;
-    border-color: #111827;
-  }
-
-  /* ===== BUTTON ===== */
+  input:focus { outline: none; border-color: #111827; }
   button {
     width: 100%;
     margin-top: 20px;
@@ -355,16 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     color: #ffffff;
     cursor: pointer;
   }
-
-  button:hover {
-    background: #000000;
-  }
-
-  button:active {
-    background: #000000;
-  }
-
-  /* ===== MESSAGE BOXES ===== */
+  button:hover { background: #000000; }
   .msg {
     margin-top: 14px;
     padding: 10px 12px;
@@ -372,34 +408,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     border-radius: 6px;
     border: 1px solid transparent;
   }
-
-  .err {
-    color: #7f1d1d;
-    background: #ffffff;
-    border-color: #e5e7eb;
-  }
-
-  .success {
-    color: #065f46;
-    background: #ffffff;
-    border-color: #e5e7eb;
-  }
-
-  /* ===== SELECT GROUP ===== */
-  optgroup {
-    font-weight: 600;
-    font-style: normal;
-    color: #374151;
-  }
-
-  /* ===== BACK TO HOME LINK ===== */
+  .err { color: #7f1d1d; background: #ffffff; border-color: #e5e7eb; }
+  .success { color: #065f46; background: #ffffff; border-color: #e5e7eb; }
   .back-home {
     text-align: center;
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid #e5e7eb;
   }
-
   .back-home a {
     color: #6b7280;
     text-decoration: none;
@@ -409,20 +425,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     gap: 6px;
     transition: color 0.2s;
   }
-
-  .back-home a:hover {
-    color: #111827;
-  }
+  .back-home a:hover { color: #111827; }
 </style>
-
 </head>
 <body>
   <form class="card" method="post">
-   <div class="header">
-  <h1>UEP Sports Management</h1>
-  <p>Sign in to your account</p>
-</div>
-
+    <div class="header">
+      <h1>UEP Sports Management</h1>
+      <p>Sign in to your account</p>
+    </div>
 
     <label>Username</label>
     <input name="username" id="username" required autocomplete="username">

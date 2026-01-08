@@ -52,11 +52,11 @@ function require_role($required_role) {
     // Note: 'sports director' in DB becomes 'sports_director' after normalization
     // Note: 'system administrator' in DB becomes 'system_administrator' after normalization
     $no_sport_roles = [
-        'tournament_manager',
-        'sports_director',      // Handles both 'sports director' and 'sports_director'
+        'Tournament manager',
+        'sports director',      // Handles both 'sports director' and 'sports_director'
         'admin',                // System administrator (short form)
         'administrator',        // Alias for admin
-        'system_administrator', // Handles 'system administrator' from DB
+        'system administrator', // Handles 'system administrator' from DB
         'spectator'             // Spectators can view ALL sports
     ];
 

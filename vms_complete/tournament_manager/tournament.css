@@ -788,3 +788,123 @@ tbody tr:last-child td {
 ::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* ==========================================
+   ATHLETE APPROVAL & DISQUALIFICATION STYLES
+   Add this to your tournament.css file
+   ========================================== */
+
+/* APPROVAL TABS */
+.approval-tab {
+  transition: all 0.15s;
+}
+
+.approval-tab:hover {
+  color: var(--text) !important;
+  background: var(--bg);
+}
+
+.approval-tab.active {
+  color: var(--primary) !important;
+  border-bottom-color: var(--primary) !important;
+}
+
+.approval-content {
+  display: none;
+}
+
+.approval-content.active {
+  display: block;
+}
+
+/* ATHLETE CARD */
+.athlete-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  transition: all 0.15s;
+}
+
+.athlete-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #93c5fd;
+}
+
+.athlete-card-checkbox {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.athlete-card-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.athlete-card-content {
+  flex: 1;
+}
+
+.athlete-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.athlete-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.athlete-card-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.athlete-card-meta div {
+  margin-bottom: 4px;
+}
+
+.athlete-card-meta div:last-child {
+  margin-bottom: 0;
+}
+
+.athlete-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive adjustments for athlete cards */
+@media (max-width: 768px) {
+  .athlete-card {
+    flex-direction: column;
+  }
+  
+  .athlete-card-checkbox {
+    align-self: flex-start;
+  }
+  
+  .athlete-card-actions {
+    flex-direction: column;
+  }
+  
+  .athlete-card-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}

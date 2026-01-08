@@ -1,5 +1,5 @@
 <?php
-// athlete/api.php
+// athlete/api.php - Complete with both Athlete and Trainee endpoints
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -22,16 +22,17 @@ header("Content-Type: application/json; charset=utf-8");
 
 $user_id = (int)$_SESSION['user']['user_id'];
 $person_id = (int)$_SESSION['user']['person_id'];
+$sports_id = (int)($_SESSION['user']['sports_id'] ?? 0);
 
 $action = $_GET['action'] ?? '';
 
 function out($data) {
-  echo json_encode($data);
+  echo json_encode($data, JSON_UNESCAPED_UNICODE);
   exit;
 }
 
 // ==========================================
-// MY TEAMS - Get teams where athlete is a member
+// ATHLETE ENDPOINTS
 // ==========================================
 
 if ($action === 'my_teams') {
@@ -60,10 +61,6 @@ if ($action === 'my_teams') {
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
-
-// ==========================================
-// TEAM PLAYERS - Get all players, optionally filtered by team
-// ==========================================
 
 if ($action === 'team_players') {
   try {
@@ -104,10 +101,6 @@ if ($action === 'team_players') {
   }
 }
 
-// ==========================================
-// MY MATCHES - Get matches for athlete's teams
-// ==========================================
-
 if ($action === 'my_matches') {
   try {
     $stmt = $pdo->prepare("
@@ -115,14 +108,14 @@ if ($action === 'my_matches') {
         m.match_id,
         m.sked_date,
         m.sked_time,
-        m.match_type,
+        IFNULL(m.match_type, 'Match') as match_type,
         m.sports_id,
         s.sports_name,
         m.team_a_id,
         m.team_b_id,
-        ta.team_name AS team_a_name,
-        tb.team_name AS team_b_name,
-        v.venue_name,
+        IFNULL(ta.team_name, 'TBA') AS team_a_name,
+        IFNULL(tb.team_name, 'TBA') AS team_b_name,
+        IFNULL(v.venue_name, 'TBA') as venue_name,
         m.winner_id,
         tw.team_name AS winner_name
       FROM tbl_team_athletes athlete
@@ -137,16 +130,14 @@ if ($action === 'my_matches') {
       ORDER BY m.sked_date DESC, m.sked_time DESC
     ");
     $stmt->execute(['person_id' => $person_id]);
-    out($stmt->fetchAll());
+    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    out($result);
   } catch (PDOException $e) {
+    error_log("MY_MATCHES ERROR: " . $e->getMessage());
     http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
-
-// ==========================================
-// TRAINING SCHEDULE - Get training schedules for athlete's teams
-// ==========================================
 
 if ($action === 'training_schedule') {
   try {
@@ -157,7 +148,7 @@ if ($action === 'training_schedule') {
         ts.sked_date,
         ts.sked_time,
         t.team_name,
-        v.venue_name,
+        IFNULL(v.venue_name, 'TBA') as venue_name,
         v.venue_building,
         v.venue_room,
         ta_attend.is_present
@@ -166,23 +157,21 @@ if ($action === 'training_schedule') {
       JOIN tbl_team t ON t.team_id = ts.team_id
       LEFT JOIN tbl_game_venue v ON v.venue_id = ts.venue_id
       LEFT JOIN tbl_train_attend ta_attend ON ta_attend.sked_id = ts.sked_id 
-        AND ta_attend.person_id = :person_id
-      WHERE athlete.person_id = :person_id
+        AND ta_attend.person_id = ?
+      WHERE athlete.person_id = ?
         AND athlete.is_active = 1
         AND ts.is_active = 1
       ORDER BY ts.sked_date DESC, ts.sked_time DESC
     ");
-    $stmt->execute(['person_id' => $person_id]);
-    out($stmt->fetchAll());
+    $stmt->execute([$person_id, $person_id]);
+    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    out($result);
   } catch (PDOException $e) {
+    error_log("TRAINING_SCHEDULE ERROR: " . $e->getMessage());
     http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
-
-// ==========================================
-// RANKINGS - Get team standings for a specific team
-// ==========================================
 
 if ($action === 'rankings') {
   try {
@@ -205,7 +194,7 @@ if ($action === 'rankings') {
 
     if (!$sport) {
       out([]);
-      return;
+      exit;
     }
 
     $sports_id = $sport['sports_id'];
@@ -238,5 +227,278 @@ if ($action === 'rankings') {
   }
 }
 
+// ==========================================
+// TRAINEE ENDPOINTS
+// ==========================================
+
+if ($action === 'trainee_stats') {
+  try {
+    // Find which teams this athlete/trainee belongs to
+    $trainee_teams_stmt = $pdo->prepare("
+      SELECT DISTINCT team_id FROM tbl_team_trainees 
+      WHERE trainee_id = ? AND is_active = 1
+      UNION
+      SELECT DISTINCT team_id FROM tbl_team_athletes 
+      WHERE person_id = ? AND is_active = 1
+    ");
+    $trainee_teams_stmt->execute([$person_id, $person_id]);
+    $team_ids = $trainee_teams_stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (empty($team_ids)) {
+      out([
+        'sessions_attended' => 0,
+        'attendance_rate' => 0,
+        'streak' => 0,
+        'total_hours' => 0
+      ]);
+      exit;
+    }
+    
+    $team_ids_str = implode(',', array_map('intval', $team_ids));
+    
+    // 1. SCHEDULED sessions this month for athlete's teams
+    $sessions_stmt = $pdo->query("
+      SELECT COUNT(*) as count 
+      FROM tbl_train_sked ts
+      WHERE ts.team_id IN ({$team_ids_str})
+      AND MONTH(ts.sked_date) = MONTH(CURRENT_DATE())
+      AND YEAR(ts.sked_date) = YEAR(CURRENT_DATE())
+      AND ts.is_active = 1
+    ");
+    $sessions_this_month = (int)$sessions_stmt->fetch()['count'];
+    
+    // 2. Attendance rate (ALL TIME)
+    $total_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_train_attend ta
+      WHERE ta.person_id = ?
+    ");
+    $total_stmt->execute([$person_id]);
+    $total = (int)$total_stmt->fetch()['count'];
+    
+    $present_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_train_attend ta
+      WHERE ta.person_id = ?
+      AND ta.is_present = 1
+    ");
+    $present_stmt->execute([$person_id]);
+    $present = (int)$present_stmt->fetch()['count'];
+    
+    $attendance_rate = $total > 0 ? round(($present / $total) * 100) : 0;
+    
+    // 3. Current streak
+    $streak_stmt = $pdo->prepare("
+      SELECT ta.is_present, ts.sked_date, ts.sked_time
+      FROM tbl_train_attend ta
+      JOIN tbl_train_sked ts ON ts.sked_id = ta.sked_id
+      WHERE ta.person_id = ?
+      ORDER BY ts.sked_date DESC, ts.sked_time DESC
+      LIMIT 50
+    ");
+    $streak_stmt->execute([$person_id]);
+    $attendance_records = $streak_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    $streak = 0;
+    foreach ($attendance_records as $record) {
+      if ($record['is_present'] == 1) {
+        $streak++;
+      } else {
+        break;
+      }
+    }
+    
+    // 4. Total training sessions attended
+    $total_attended_stmt = $pdo->prepare("
+      SELECT COUNT(*) as count 
+      FROM tbl_train_attend ta
+      WHERE ta.person_id = ?
+      AND ta.is_present = 1
+    ");
+    $total_attended_stmt->execute([$person_id]);
+    $total_sessions = (int)$total_attended_stmt->fetch()['count'];
+    
+    out([
+      'sessions_attended' => $sessions_this_month,
+      'attendance_rate' => $attendance_rate,
+      'streak' => $streak,
+      'total_hours' => $total_sessions
+    ]);
+  } catch (PDOException $e) {
+    error_log("TRAINEE_STATS ERROR: " . $e->getMessage());
+    out(['ok' => false, 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'upcoming_sessions') {
+  try {
+    $stmt = $pdo->prepare("
+      SELECT 
+        ts.sked_id,
+        ts.sked_date as training_date,
+        ts.sked_time as start_time,
+        '' as end_time,
+        CONCAT(
+          IFNULL(gv.venue_name, 'TBA'),
+          CASE 
+            WHEN gv.venue_building IS NOT NULL AND gv.venue_building != '' 
+            THEN CONCAT(' - ', gv.venue_building)
+            ELSE ''
+          END
+        ) as location,
+        '' as description,
+        t.team_name,
+        'Training Session' as training_type,
+        CONCAT(
+          IFNULL(p1.f_name, ''), ' ', IFNULL(p1.l_name, ''),
+          CASE 
+            WHEN p2.person_id IS NOT NULL 
+            THEN CONCAT(', ', p2.f_name, ' ', p2.l_name)
+            ELSE ''
+          END,
+          CASE 
+            WHEN p3.person_id IS NOT NULL 
+            THEN CONCAT(', ', p3.f_name, ' ', p3.l_name)
+            ELSE ''
+          END
+        ) as trainor_name
+      FROM tbl_train_sked ts
+      JOIN tbl_team t ON t.team_id = ts.team_id
+      JOIN tbl_sports_team st ON st.team_id = ts.team_id
+      LEFT JOIN tbl_game_venue gv ON gv.venue_id = ts.venue_id
+      LEFT JOIN tbl_person p1 ON p1.person_id = st.trainor1_id
+      LEFT JOIN tbl_person p2 ON p2.person_id = st.trainor2_id
+      LEFT JOIN tbl_person p3 ON p3.person_id = st.trainor3_id
+      WHERE st.sports_id = ?
+      AND ts.sked_date >= CURRENT_DATE()
+      AND ts.is_active = 1
+      ORDER BY ts.sked_date, ts.sked_time
+      LIMIT 5
+    ");
+    $stmt->execute([$sports_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    out(['ok' => false, 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'all_sessions') {
+  try {
+    $stmt = $pdo->prepare("
+      SELECT 
+        ts.sked_id,
+        ts.sked_date as training_date,
+        ts.sked_time as start_time,
+        '' as end_time,
+        CONCAT(
+          IFNULL(gv.venue_name, 'TBA'),
+          CASE 
+            WHEN gv.venue_building IS NOT NULL AND gv.venue_building != '' 
+            THEN CONCAT(' - ', gv.venue_building)
+            ELSE ''
+          END
+        ) as location,
+        '' as description,
+        t.team_name,
+        'Training Session' as training_type,
+        CONCAT(
+          IFNULL(p1.f_name, ''), ' ', IFNULL(p1.l_name, ''),
+          CASE 
+            WHEN p2.person_id IS NOT NULL 
+            THEN CONCAT(', ', p2.f_name, ' ', p2.l_name)
+            ELSE ''
+          END,
+          CASE 
+            WHEN p3.person_id IS NOT NULL 
+            THEN CONCAT(', ', p3.f_name, ' ', p3.l_name)
+            ELSE ''
+          END
+        ) as trainor_name
+      FROM tbl_train_sked ts
+      JOIN tbl_team t ON t.team_id = ts.team_id
+      JOIN tbl_sports_team st ON st.team_id = ts.team_id
+      LEFT JOIN tbl_game_venue gv ON gv.venue_id = ts.venue_id
+      LEFT JOIN tbl_person p1 ON p1.person_id = st.trainor1_id
+      LEFT JOIN tbl_person p2 ON p2.person_id = st.trainor2_id
+      LEFT JOIN tbl_person p3 ON p3.person_id = st.trainor3_id
+      WHERE st.sports_id = ?
+      AND ts.is_active = 1
+      ORDER BY ts.sked_date DESC, ts.sked_time DESC
+      LIMIT 50
+    ");
+    $stmt->execute([$sports_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    out(['ok' => false, 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'my_attendance') {
+  try {
+    $stmt = $pdo->prepare("
+      SELECT 
+        ts.sked_date as training_date,
+        ts.sked_time as start_time,
+        ta.is_present,
+        CASE 
+          WHEN ta.is_present = 1 THEN 'present'
+          ELSE 'absent'
+        END as status,
+        'Training Session' as training_type,
+        CONCAT(
+          IFNULL(p1.f_name, ''), ' ', IFNULL(p1.l_name, ''),
+          CASE 
+            WHEN p2.person_id IS NOT NULL 
+            THEN CONCAT(', ', p2.f_name, ' ', p2.l_name)
+            ELSE ''
+          END,
+          CASE 
+            WHEN p3.person_id IS NOT NULL 
+            THEN CONCAT(', ', p3.f_name, ' ', p3.l_name)
+            ELSE ''
+          END
+        ) as trainor_name,
+        'N/A' as duration
+      FROM tbl_train_attend ta
+      JOIN tbl_train_sked ts ON ts.sked_id = ta.sked_id
+      JOIN tbl_team t ON t.team_id = ts.team_id
+      JOIN tbl_sports_team st ON st.team_id = ts.team_id
+      LEFT JOIN tbl_person p1 ON p1.person_id = st.trainor1_id
+      LEFT JOIN tbl_person p2 ON p2.person_id = st.trainor2_id
+      LEFT JOIN tbl_person p3 ON p3.person_id = st.trainor3_id
+      WHERE ta.person_id = ?
+      ORDER BY ts.sked_date DESC
+      LIMIT 100
+    ");
+    $stmt->execute([$person_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    out(['ok' => false, 'error' => $e->getMessage()]);
+  }
+}
+
+if ($action === 'my_programs') {
+  try {
+    $stmt = $pdo->prepare("
+      SELECT 
+        activity_id as program_id,
+        activity_name as program_name,
+        CONCAT(IFNULL(duration, ''), ' / ', IFNULL(repetition, '')) as description,
+        4 as duration_weeks,
+        'Improve fitness and skills' as goals,
+        is_active
+      FROM tbl_training_activity
+      WHERE sports_id = ?
+      AND is_active = 1
+      ORDER BY activity_name
+    ");
+    $stmt->execute([$sports_id]);
+    out($stmt->fetchAll(PDO::FETCH_ASSOC));
+  } catch (PDOException $e) {
+    out([]);
+  }
+}
+
+// Default 404 response
 http_response_code(404);
-out(['ok' => false, 'message' => 'Unknown action']);
+out(['ok' => false, 'message' => 'Unknown action: ' . $action]);
