@@ -29,7 +29,7 @@ const pageTitles = {
   'results': 'Match Results',
   'rankings': 'Rankings & Standings',
   'medals': 'Medal Tally',
-  'tournaments': 'Tournaments'
+  'tournaments': 'My Tournaments & Matches'
 };
 
 $$('.nav-link').forEach(btn => {
@@ -486,29 +486,141 @@ async function loadTournaments() {
     
     if (!tournaments || tournaments.length === 0) {
       content.innerHTML = `
-        <div class="data-card">
-          <p style="color:var(--muted);text-align:center;padding:20px;">No tournaments available</p>
-        </div>
+        <div class="empty-state">You have no tournament assignments yet</div>
       `;
       return;
     }
     
-    content.innerHTML = tournaments.map(t => `
-      <div class="data-card">
-        <div class="data-card-header">
-          <div class="data-card-title">🏆 ${escapeHtml(t.tour_name)}</div>
-          <span class="badge ${t.is_active == 1 ? 'upcoming' : 'completed'}">
-            ${t.is_active == 1 ? 'Active' : 'Completed'}
-          </span>
+    content.innerHTML = '<div class="loading">Loading tournament details...</div>';
+    
+    // Build tournament sections with matches
+    let html = '';
+    
+    for (const tour of tournaments) {
+      html += `
+        <div class="tournament-section" style="margin-bottom:32px;">
+          <div class="tournament-header" style="background:white;padding:20px;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:16px;border:1px solid var(--line);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+              <div>
+                <h3 style="font-size:20px;font-weight:700;margin-bottom:8px;color:var(--text);">
+                  🏆 ${escapeHtml(tour.tour_name)}
+                </h3>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted);">
+                  <span>📅 ${escapeHtml(tour.tour_date)}</span>
+                  <span>📚 ${escapeHtml(tour.school_year)}</span>
+                  <span>🎯 ${tour.total_matches} match${tour.total_matches !== 1 ? 'es' : ''}</span>
+                  ${tour.upcoming_matches > 0 ? `<span style="color:#3b82f6;font-weight:600;">⏰ ${tour.upcoming_matches} upcoming</span>` : ''}
+                  ${tour.completed_matches > 0 ? `<span style="color:#10b981;font-weight:600;">✅ ${tour.completed_matches} completed</span>` : ''}
+                </div>
+              </div>
+              <span class="badge ${tour.is_active == 1 ? 'upcoming' : 'completed'}" style="font-size:12px;">
+                ${tour.is_active == 1 ? 'Active' : 'Completed'}
+              </span>
+            </div>
+            <button class="view-matches-btn" data-tour-id="${tour.tour_id}" style="margin-top:16px;padding:10px 20px;background:var(--primary);color:white;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;transition:all 0.2s;">
+              View My Matches (${tour.total_matches})
+            </button>
+          </div>
+          <div class="matches-container" id="matches-${tour.tour_id}" style="display:none;"></div>
         </div>
-        <div class="data-card-meta">
-          📅 Date: ${escapeHtml(t.tour_date)}<br>
-          📚 School Year: ${escapeHtml(t.school_year)}
-        </div>
-      </div>
-    `).join('');
+      `;
+    }
+    
+    content.innerHTML = html;
+    
+    // Add event listeners to view matches buttons
+    $$('.view-matches-btn').forEach(btn => {
+      btn.addEventListener('click', async function() {
+        const tourId = this.dataset.tourId;
+        const container = $(`#matches-${tourId}`);
+        
+        if (container.style.display === 'none') {
+          // Load and show matches
+          this.textContent = 'Loading...';
+          this.disabled = true;
+          
+          try {
+            const matches = await fetchAPI('tournament_matches', { tour_id: tourId });
+            
+            if (!matches || matches.length === 0) {
+              container.innerHTML = `
+                <div class="data-card">
+                  <p style="color:var(--muted);text-align:center;padding:20px;">No matches found</p>
+                </div>
+              `;
+            } else {
+              container.innerHTML = `
+                <div class="data-grid">
+                  ${matches.map(m => {
+                    const statusBadge = {
+                      'today': '<span class="badge" style="background:#fbbf24;color:#78350f;border:1px solid #f59e0b;">Today</span>',
+                      'upcoming': '<span class="badge upcoming">Upcoming</span>',
+                      'completed': '<span class="badge completed">Completed</span>',
+                      'pending': '<span class="badge pending">Pending</span>'
+                    }[m.match_status] || '';
+                    
+                    return `
+                      <div class="data-card">
+                        <div class="data-card-header">
+                          <div class="data-card-title">
+                            Game #${m.game_no || 'N/A'} - ${escapeHtml(m.sports_name)}
+                          </div>
+                          ${statusBadge}
+                        </div>
+                        <div class="data-card-meta">
+                          <div style="font-weight:600;margin-bottom:8px;font-size:14px;">
+                            ${escapeHtml(m.match_type)} Match
+                          </div>
+                          📅 ${escapeHtml(m.sked_date)} at ${escapeHtml(m.sked_time)}<br>
+                          🏟️ ${escapeHtml(m.venue_name || 'TBA')}
+                          ${m.venue_building ? '<br>🏢 ' + escapeHtml(m.venue_building) : ''}
+                          ${m.venue_room ? ' - Room ' + escapeHtml(m.venue_room) : ''}<br>
+                          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+                            <strong>🆚 Matchup:</strong><br>
+                            <span style="color:#3b82f6;">${escapeHtml(m.team_a_name)}</span> 
+                            <strong>vs</strong> 
+                            <span style="color:#ef4444;">${escapeHtml(m.team_b_name)}</span>
+                          </div>
+                          ${m.winner_name ? `
+                            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);">
+                              🏆 <strong>Winner:</strong> <span style="color:#10b981;font-weight:600;">${escapeHtml(m.winner_name)}</span>
+                            </div>
+                          ` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `;
+            }
+            
+            container.style.display = 'block';
+            this.textContent = 'Hide Matches';
+            this.disabled = false;
+          } catch (err) {
+            console.error('Error loading tournament matches:', err);
+            container.innerHTML = `
+              <div class="data-card">
+                <p style="color:var(--danger);text-align:center;padding:20px;">Error loading matches</p>
+              </div>
+            `;
+            container.style.display = 'block';
+            this.textContent = 'View My Matches';
+            this.disabled = false;
+          }
+        } else {
+          // Hide matches
+          container.style.display = 'none';
+          this.textContent = `View My Matches (${this.textContent.match(/\d+/)[0]})`;
+        }
+      });
+    });
+    
   } catch (err) {
     console.error('loadTournaments error:', err);
+    $('#tournamentsContent').innerHTML = `
+      <div class="empty-state">Error loading tournaments</div>
+    `;
   }
 }
 

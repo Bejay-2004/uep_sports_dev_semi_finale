@@ -86,7 +86,47 @@ $sports_id = (int)($_SESSION['user']['sports_id'] ?? 0); // Will be NULL/0 for s
       </svg>
       <span>Standings</span>
     </button>
+
+    <button class="nav-link" data-view="colleges">
+  <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H1.5A1.5 1.5 0 0 0 0 4.5v8A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-8A1.5 1.5 0 0 0 14.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1h-3zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5z"/>
+  </svg>
+  <span>Colleges</span>
+</button>
+
+<button class="nav-link" data-view="departments">
+  <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z"/>
+  </svg>
+  <span>Departments</span>
+</button>
+
+<button class="nav-link" data-view="courses">
+  <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/>
+  </svg>
+  <span>Courses</span>
+</button>
+
+
+<button class="nav-link" data-view="venues">
+  <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.707 1.5Z"/>
+    <path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293l6-6Z"/>
+  </svg>
+  <span>Venues</span>
+</button>
+
+<button class="nav-link" data-view="equipment">
+  <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+    <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"/>
+    <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319z"/>
+  </svg>
+  <span>Equipment</span>
+</button>
   </nav>
+
+  
   
   <div class="sidebar-footer">
     <form method="post" action="<?= BASE_URL ?>/auth/logout.php" id="logoutForm">
@@ -252,6 +292,83 @@ $sports_id = (int)($_SESSION['user']['sports_id'] ?? 0); // Will be NULL/0 for s
     </div>
   </section>
 
+  <!-- COLLEGES VIEW -->
+<section class="content-view" id="colleges-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showCollegeModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Add College
+    </button>
+  </div>
+  <div id="collegesContent">
+    <div class="loading">Loading colleges...</div>
+  </div>
+</section>
+
+<!-- DEPARTMENTS VIEW -->
+<section class="content-view" id="departments-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showDepartmentModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Add Department
+    </button>
+  </div>
+  <div id="departmentsContent">
+    <div class="loading">Loading departments...</div>
+  </div>
+</section>
+
+<!-- COURSES VIEW -->
+<section class="content-view" id="courses-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showCourseModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Add Course
+    </button>
+  </div>
+  <div id="coursesContent">
+    <div class="loading">Loading courses...</div>
+  </div>
+</section>
+
+<!-- VENUES VIEW -->
+<section class="content-view" id="venues-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showVenueModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Add Venue
+    </button>
+  </div>
+  <div id="venuesContent">
+    <div class="loading">Loading venues...</div>
+  </div>
+</section>
+
+<!-- EQUIPMENT VIEW -->
+<section class="content-view" id="equipment-view">
+  <div class="view-header">
+    <button class="btn btn-primary" onclick="showEquipmentModal()">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+      </svg>
+      Add Equipment
+    </button>
+  </div>
+  <div id="equipmentContent">
+    <div class="loading">Loading equipment...</div>
+  </div>
+</section>
+
+
+
 </main>
 
 <!-- Modals will be loaded dynamically -->
@@ -274,7 +391,8 @@ $sports_id = (int)($_SESSION['user']['sports_id'] ?? 0); // Will be NULL/0 for s
   window.BASE_URL = "<?= BASE_URL ?>";
   window.DIRECTOR_CONTEXT = {
     person_id: <?= (int)$person_id ?>,
-    sports_id: <?= (int)$sports_id ?>
+    sports_id: <?= (int)$sports_id ?>,
+    full_name: "<?= htmlspecialchars($full_name) ?>"
   };
 
   // Logout functions

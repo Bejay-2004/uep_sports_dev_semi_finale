@@ -100,6 +100,8 @@ $initials = substr($initials, 0, 2);
     </button>
   </nav>
 
+  
+
   <div class="sidebar-footer">
     <form method="post" action="<?= BASE_URL ?>/auth/logout.php" style="margin:0;width:100%;">
       <button type="submit" class="logout-link">

@@ -629,3 +629,121 @@ tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Equipment-specific styles - add to director.css */
+
+.equipment-image {
+  position: relative;
+  transition: transform 0.2s;
+}
+
+.equipment-image:hover {
+  transform: scale(1.02);
+}
+
+.equipment-image img {
+  transition: transform 0.3s ease;
+}
+
+.data-card:hover .equipment-image img {
+  transform: scale(1.05);
+}
+
+/* Badge color variants */
+.badge-success {
+  background: #d1fae5;
+  color: #065f46;
+  border-color: #6ee7b7;
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
+/* Image upload preview */
+.form-control[type="file"] {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.form-control[type="file"]::file-selector-button {
+  padding: 6px 12px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 10px;
+  transition: all 0.2s;
+}
+
+.form-control[type="file"]::file-selector-button:hover {
+  background: var(--primary-light);
+}
+
+/* Transaction table enhancements */
+table tbody tr:hover {
+  background: #f9fafb;
+  transition: background 0.15s;
+}
+
+/* Modal section titles */
+.modal-section-title {
+  margin: 24px 0 14px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.modal-section-title:first-child {
+  margin-top: 0;
+}
+
+/* Responsive grid for equipment cards */
+@media (max-width: 768px) {
+  .data-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .equipment-image {
+    height: 200px !important;
+  }
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Enhanced empty state */
+.empty-state {
+  padding: 60px 20px;
+  text-align: center;
+  color: #9ca3af;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 2px dashed #e5e7eb;
+}
+
+.empty-state::before {
+  content: "📦";
+  display: block;
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}

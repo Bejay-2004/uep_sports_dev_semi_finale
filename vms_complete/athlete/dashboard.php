@@ -260,12 +260,6 @@ try {
       <h2>Team Players</h2>
     </div>
     
-    <div class="card" style="margin-bottom:20px;">
-      <label>Filter by Team</label>
-      <select id="teamFilterSelect" class="form-select">
-        <option value="">All Teams</option>
-      </select>
-    </div>
 
     <div class="table-container">
       <table class="user-table" id="playersTable">

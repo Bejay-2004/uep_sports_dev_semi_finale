@@ -699,40 +699,32 @@ async function showCreateTeamModal(tourId) {
 // ENHANCED ATHLETE MODAL
 // ==========================================
 
-async function showAthleteModal(athlete = null, tourId, teamId, sportsId) {
-  const isEdit = !!athlete;
+async function showAthleteModal(athlete = null, tourId = null, teamId = null, sportsId = null) {
+  const isEdit = athlete !== null;
+  const title = isEdit ? 'Edit Athlete' : 'Create New Athlete';
   
-  // Fetch colleges from database
-  let collegesHTML = '<option value="">Select College</option>';
-  try {
-    const colleges = await fetchAPI('colleges');
-    if (colleges && colleges.length > 0) {
-      collegesHTML = '<option value="">Select College</option>' +
-        colleges.map(c => 
-          `<option value="${escapeHtml(c.college_code)}" ${athlete?.college_code === c.college_code ? 'selected' : ''}>
-            ${escapeHtml(c.college_code)} - ${escapeHtml(c.college_name)}
-          </option>`
-        ).join('');
-    }
-  } catch (error) {
-    console.error('Error loading colleges:', error);
-    showToast('⚠️ Could not load colleges list', 'warning');
-  }
+  // Fetch colleges for dropdown
+  const colleges = await fetchAPI('colleges') || [];
   
-  const modal = `
-    <div class="modal active" id="athleteModal">
-      <div class="modal-content" style="max-width: 650px;">
+  // If creating and context is provided, use it
+  const contextTourId = isEdit ? (athlete.tour_id || currentContext.tour_id) : (tourId || currentContext.tour_id);
+  const contextTeamId = isEdit ? (athlete.team_id || currentContext.team_id) : (teamId || currentContext.team_id);
+  const contextSportsId = isEdit ? (athlete.sports_id || currentContext.sports_id) : (sportsId || currentContext.sports_id);
+  
+  const modalHTML = `
+    <div class="modal active" id="athleteModal" style="z-index: 10001;">
+      <div class="modal-content" style="max-width: 700px;">
         <div class="modal-header">
-          <h3>${isEdit ? '✏️ Edit Athlete' : '➕ Add New Athlete'}</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${title}</h3>
+          <button class="modal-close" onclick="closeModal('athleteModal')">×</button>
         </div>
-        <form onsubmit="saveAthlete(event, ${isEdit})" id="athleteForm">
+        <form onsubmit="saveAthlete(event, ${isEdit ? athlete.person_id : 'null'}, ${isEdit ? athlete.team_ath_id : 'null'}, ${contextTourId}, ${contextTeamId}, ${contextSportsId})" id="athleteForm">
           <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
             
             <!-- Personal Information -->
             <h4 class="modal-section-title">👤 Personal Information</h4>
             
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
               <div class="form-group">
                 <label class="form-label">Last Name *</label>
                 <input type="text" class="form-control" name="l_name" value="${escapeHtml(athlete?.l_name || '')}" required>
@@ -742,27 +734,22 @@ async function showAthleteModal(athlete = null, tourId, teamId, sportsId) {
                 <label class="form-label">First Name *</label>
                 <input type="text" class="form-control" name="f_name" value="${escapeHtml(athlete?.f_name || '')}" required>
               </div>
+              
+              <div class="form-group">
+                <label class="form-label">Middle Name</label>
+                <input type="text" class="form-control" name="m_name" value="${escapeHtml(athlete?.m_name || '')}">
+              </div>
             </div>
             
-            <div class="form-group">
-              <label class="form-label">Middle Name</label>
-              <input type="text" class="form-control" name="m_name" value="${escapeHtml(athlete?.m_name || '')}">
-            </div>
-            
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
               <div class="form-group">
                 <label class="form-label">Title</label>
-                <select class="form-control" name="title">
-                  <option value="">None</option>
-                  <option value="Mr." ${athlete?.title === 'Mr.' ? 'selected' : ''}>Mr.</option>
-                  <option value="Ms." ${athlete?.title === 'Ms.' ? 'selected' : ''}>Ms.</option>
-                  <option value="Mrs." ${athlete?.title === 'Mrs.' ? 'selected' : ''}>Mrs.</option>
-                </select>
+                <input type="text" class="form-control" name="title" value="${escapeHtml(athlete?.title || '')}" placeholder="e.g., Mr., Ms., Jr.">
               </div>
               
               <div class="form-group">
-                <label class="form-label">Date of Birth *</label>
-                <input type="date" class="form-control" name="date_birth" value="${athlete?.date_birth || ''}" required>
+                <label class="form-label">Date of Birth</label>
+                <input type="date" class="form-control" name="date_birth" value="${athlete?.date_birth || ''}">
               </div>
             </div>
             
@@ -781,84 +768,77 @@ async function showAthleteModal(athlete = null, tourId, teamId, sportsId) {
               </select>
             </div>
             
-            <!-- Physical Information -->
-            <h4 class="modal-section-title">📏 Physical Information</h4>
-            
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-              <div class="form-group">
-                <label class="form-label">Height (cm)</label>
-                <input type="number" class="form-control" name="height" value="${athlete?.height || ''}" step="0.1" min="0" max="300" placeholder="e.g., 175.5">
-              </div>
-              
-              <div class="form-group">
-                <label class="form-label">Weight (kg)</label>
-                <input type="number" class="form-control" name="weight" value="${athlete?.weight || ''}" step="0.1" min="0" max="300" placeholder="e.g., 68.5">
-              </div>
-            </div>
-            
             <!-- Academic Information -->
             <h4 class="modal-section-title">🎓 Academic Information</h4>
             
             <div class="form-group">
-              <label class="form-label">College *</label>
-              <select class="form-control" name="college_code" required>
-                ${collegesHTML}
+              <label class="form-label">College</label>
+              <select class="form-control" name="college_code">
+                <option value="">Select College (Optional)</option>
+                ${colleges.map(c => `
+                  <option value="${escapeHtml(c.college_code)}" ${athlete?.college_code === c.college_code ? 'selected' : ''}>
+                    ${escapeHtml(c.college_name)} (${escapeHtml(c.college_code)})
+                  </option>
+                `).join('')}
               </select>
             </div>
             
             <div class="form-group">
-              <label class="form-label">Course *</label>
-              <input type="text" class="form-control" name="course" value="${escapeHtml(athlete?.course || '')}" placeholder="e.g., BSIT, BSN, BSBA" required>
+              <label class="form-label">Course/Program</label>
+              <input type="text" class="form-control" name="course" value="${escapeHtml(athlete?.course || '')}" placeholder="e.g., BSIT, BSCS">
+            </div>
+            
+            <!-- Physical Information -->
+            <h4 class="modal-section-title">📏 Physical Information</h4>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group">
+                <label class="form-label">Height (cm)</label>
+                <input type="number" class="form-control" name="height" value="${athlete?.height || ''}" step="0.1" min="0" placeholder="e.g., 170">
+              </div>
+              
+              <div class="form-group">
+                <label class="form-label">Weight (kg)</label>
+                <input type="number" class="form-control" name="weight" value="${athlete?.weight || ''}" step="0.1" min="0" placeholder="e.g., 65">
+              </div>
             </div>
             
             <!-- Scholarship Information -->
-            <h4 class="modal-section-title">🎖️ Scholarship Information</h4>
+            <h4 class="modal-section-title">🎓 Scholarship Information</h4>
             
             <div class="form-group">
               <label class="form-label">Scholarship Type</label>
               <select class="form-control" name="scholarship_name">
-                <option value="">None</option>
+                <option value="">No Scholarship</option>
                 <option value="Varsity" ${athlete?.scholarship_name === 'Varsity' ? 'selected' : ''}>Varsity</option>
                 <option value="Academic" ${athlete?.scholarship_name === 'Academic' ? 'selected' : ''}>Academic</option>
                 <option value="Athletic" ${athlete?.scholarship_name === 'Athletic' ? 'selected' : ''}>Athletic</option>
-                <option value="Full Scholarship" ${athlete?.scholarship_name === 'Full Scholarship' ? 'selected' : ''}>Full Scholarship</option>
-                <option value="Partial Scholarship" ${athlete?.scholarship_name === 'Partial Scholarship' ? 'selected' : ''}>Partial Scholarship</option>
-              </select>
-            </div>
-            
-            <div class="form-group">
-              <label class="form-label">Semester</label>
-              <select class="form-control" name="semester">
-                <option value="">Select Semester</option>
-                <option value="1st Semester" ${athlete?.semester === '1st Semester' ? 'selected' : ''}>1st Semester</option>
-                <option value="2nd Semester" ${athlete?.semester === '2nd Semester' ? 'selected' : ''}>2nd Semester</option>
-                <option value="Summer" ${athlete?.semester === 'Summer' ? 'selected' : ''}>Summer</option>
+                <option value="Full" ${athlete?.scholarship_name === 'Full' ? 'selected' : ''}>Full Scholarship</option>
+                <option value="Partial" ${athlete?.scholarship_name === 'Partial' ? 'selected' : ''}>Partial Scholarship</option>
               </select>
             </div>
             
             <!-- Team Role -->
-            <h4 class="modal-section-title">⭐ Team Role</h4>
-            
-            <div class="form-group">
-              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <input type="checkbox" name="is_captain" ${athlete?.is_captain ? 'checked' : ''} style="width: 20px; height: 20px; cursor: pointer;">
-                <span style="font-weight: 600; color: #374151;">Designate as Team Captain</span>
-              </label>
-            </div>
-            
-            <!-- Hidden fields -->
             ${!isEdit ? `
-              <input type="hidden" name="tour_id" value="${tourId}">
-              <input type="hidden" name="team_id" value="${teamId}">
-              <input type="hidden" name="sports_id" value="${sportsId}">
-            ` : `
-              <input type="hidden" name="person_id" value="${athlete.person_id}">
-              <input type="hidden" name="team_ath_id" value="${athlete.team_ath_id}">
-            `}
+              <h4 class="modal-section-title">⭐ Team Role</h4>
+              
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 12px; background: #fef3c7; border-radius: 8px; border: 1px solid #fbbf24;">
+                  <input type="checkbox" name="is_captain" value="1" style="width: 20px; height: 20px; cursor: pointer;">
+                  <div>
+                    <div style="font-weight: 600; color: #92400e;">Team Captain</div>
+                    <div style="font-size: 11px; color: #78350f; margin-top: 2px;">Check if this athlete will be the team captain</div>
+                  </div>
+                </label>
+              </div>
+            ` : ''}
+            
+            ${isEdit ? `<input type="hidden" name="person_id" value="${athlete.person_id}">` : ''}
+            ${isEdit && athlete.team_ath_id ? `<input type="hidden" name="team_ath_id" value="${athlete.team_ath_id}">` : ''}
           </div>
           
           <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('athleteModal')">Cancel</button>
             <button type="submit" class="btn btn-primary">
               ${isEdit ? '💾 Update' : '➕ Create'} Athlete
             </button>
@@ -868,91 +848,90 @@ async function showAthleteModal(athlete = null, tourId, teamId, sportsId) {
     </div>
   `;
   
-  closeModal();
-  $('#modalContainer').innerHTML = modal;
-  
-  // Add section title styles
-  if (!document.getElementById('modalSectionStyles')) {
-    const style = document.createElement('style');
-    style.id = 'modalSectionStyles';
-    style.textContent = `
-      .modal-section-title {
-        margin: 24px 0 14px 0;
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--text);
-        border-bottom: 2px solid var(--border);
-        padding-bottom: 8px;
-      }
-      .modal-section-title:first-child {
-        margin-top: 0;
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = modalHTML;
+  document.body.appendChild(tempDiv.firstElementChild);
 }
 
-async function saveAthlete(event, isEdit) {
+async function saveAthlete(event, personId, teamAthId, tourId, teamId, sportsId) {
   event.preventDefault();
+  
   const form = event.target;
   const formData = new FormData(form);
   
   const data = {
-    l_name: formData.get('l_name').trim(),
-    f_name: formData.get('f_name').trim(),
-    m_name: formData.get('m_name').trim(),
-    title: formData.get('title'),
-    date_birth: formData.get('date_birth'),
-    blood_type: formData.get('blood_type'),
-    college_code: formData.get('college_code'),
-    course: formData.get('course').trim(),
+    l_name: formData.get('l_name'),
+    f_name: formData.get('f_name'),
+    m_name: formData.get('m_name') || '',
+    title: formData.get('title') || '',
+    date_birth: formData.get('date_birth') || null,
+    college_code: formData.get('college_code') || '',
+    course: formData.get('course') || '',
+    blood_type: formData.get('blood_type') || '',
     height: formData.get('height') || null,
     weight: formData.get('weight') || null,
-    scholarship_name: formData.get('scholarship_name') || null,
-    semester: formData.get('semester') || null,
+    scholarship_name: formData.get('scholarship_name') || '',
     is_captain: formData.get('is_captain') ? 1 : 0
   };
   
-  if (isEdit) {
-    data.person_id = formData.get('person_id');
-    data.team_ath_id = formData.get('team_ath_id');
-  } else {
-    data.tour_id = formData.get('tour_id');
-    data.team_id = formData.get('team_id');
-    data.sports_id = formData.get('sports_id');
-    data.school_year = new Date().getFullYear(); // Add current school year
-  }
+  console.log('💾 Saving athlete:', data);
   
   try {
-    const action = isEdit ? 'update_athlete' : 'create_athlete';
-    const result = await fetchAPI(action, data, 'POST');
+    let result;
+    
+    if (personId) {
+      // Update existing athlete
+      data.person_id = personId;
+      if (teamAthId) data.team_ath_id = teamAthId;
+      if (tourId) data.tour_id = tourId;
+      result = await fetchAPI('update_athlete', data, 'POST');
+    } else {
+      // Create new athlete
+      data.tour_id = tourId;
+      data.team_id = teamId;
+      data.sports_id = sportsId;
+      result = await fetchAPI('create_athlete', data, 'POST');
+    }
+    
+    console.log('📥 Save result:', result);
     
     if (result && result.ok !== false) {
-      closeModal();
+      closeModal('athleteModal');
       
-      // Check if we have a valid context and the loadSportAthletes function exists
-      if (window.currentContext && typeof loadSportAthletes === 'function') {
-        const context = window.currentContext;
-        if (context.tour_id && context.team_id && context.sports_id) {
-          loadSportAthletes(context.tour_id, context.team_id, context.sports_id);
-        }
+      // Check which modal/view is currently open and reload appropriately
+      const sportAthletesModal = document.getElementById('sportAthletesModal');
+      
+      if (sportAthletesModal && tourId && teamId && sportsId) {
+        // We're in the sport athletes modal - reload that list
+        await loadSportAthletes(tourId, teamId, sportsId);
       }
       
-      // Reload the athletes view if we're in that view
-      const athletesView = document.querySelector('#athletes-view');
-      if (athletesView && athletesView.classList.contains('active')) {
-        if (typeof loadAthletes === 'function') {
-          loadAthletes();
-        }
-      }
+      showToast(personId ? '✅ Athlete updated successfully' : '✅ Athlete created successfully', 'success');
       
-      showToast(isEdit ? '✅ Athlete updated successfully' : '✅ Athlete created successfully', 'success');
+      // Trigger events
+      if (personId) {
+        DashboardEvents.trigger(EVENTS.ATHLETE_UPDATED, { person_id: personId, ...data });
+      } else {
+        DashboardEvents.trigger(EVENTS.ATHLETE_CREATED, { person_id: result.person_id, ...data });
+      }
     } else {
-      showToast('❌ Error saving athlete: ' + (result?.error || 'Unknown error'), 'error');
+      showToast('❌ ' + (result?.error || 'Error saving athlete'), 'error');
     }
   } catch (error) {
     console.error('Error saving athlete:', error);
     showToast('❌ Error saving athlete: ' + error.message, 'error');
+  }
+}
+
+function closeModal(modalId) {
+  if (modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.remove();
+    }
+  } else {
+    // Close all modals
+    document.querySelectorAll('.modal').forEach(m => m.remove());
   }
 }
 

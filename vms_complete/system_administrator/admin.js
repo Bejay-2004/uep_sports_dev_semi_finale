@@ -720,6 +720,10 @@ async function loadRoles() {
 // ACTIVITY LOGS
 // ==========================================
 
+// ==========================================
+// ENHANCED LOGS - Replace loadLogs() function in admin.js
+// ==========================================
+
 async function loadLogs() {
   try {
     const filter = $('#logFilter')?.value || '';
@@ -731,22 +735,117 @@ async function loadLogs() {
       return;
     }
     
-    content.innerHTML = data.map(log => `
-      <div class="log-entry">
-        <div class="log-icon">${getActionIcon(log.action)}</div>
-        <div class="log-details">
-          <div class="log-action">${escapeHtml(log.description)}</div>
-          <div class="log-meta">By ${escapeHtml(log.user_name)} • ${escapeHtml(log.ip_address || 'N/A')}</div>
+    let html = '';
+    
+    data.forEach(log => {
+      const isReverted = log.reverted_at !== null;
+      const canRevert = log.can_revert == 1 && !isReverted;
+      const hasDetails = log.old_data || log.new_data || log.target_table;
+      
+      html += `
+        <div class="log-card ${isReverted ? 'log-reverted' : ''}" data-log-id="${log.log_id}">
+          <div class="log-header">
+            <div class="log-main-info">
+              <div class="log-icon-wrapper">
+                <div class="log-icon ${log.action || 'info'}">${getActionIcon(log.action || 'info')}</div>
+              </div>
+              <div class="log-details-wrapper">
+                <div class="log-action-text">${escapeHtml(log.description)}</div>
+                <div class="log-metadata">
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
+                    </svg>
+                    ${escapeHtml(log.user_name || 'System')}
+                  </span>
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M8.5 5.5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9V5.5z"/>
+                      <path d="M6.5 0a.5.5 0 0 0 0 1H7v1.07a7.001 7.001 0 0 0-3.273 12.474l-.602.602a.5.5 0 0 0 .707.708l.746-.746A6.97 6.97 0 0 0 8 16a6.97 6.97 0 0 0 3.422-.892l.746.746a.5.5 0 0 0 .707-.708l-.601-.602A7.001 7.001 0 0 0 9 2.07V1h.5a.5.5 0 0 0 0-1h-3zm1.038 3.018a6.093 6.093 0 0 1 .924 0 6 6 0 1 1-.924 0zM0 3.5c0 .753.333 1.429.86 1.887A8.035 8.035 0 0 1 4.387 1.86 2.5 2.5 0 0 0 0 3.5zM13.5 1c-.753 0-1.429.333-1.887.86a8.035 8.035 0 0 1 3.527 3.527A2.5 2.5 0 0 0 13.5 1z"/>
+                    </svg>
+                    ${formatDetailedTime(log.created_at)}
+                  </span>
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/>
+                    </svg>
+                    ${escapeHtml(log.module_name)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="log-actions">
+              ${hasDetails ? `
+                <button class="btn-icon" onclick="toggleLogDetails(${log.log_id})" title="View details">
+                  <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                  </svg>
+                </button>
+              ` : ''}
+              ${canRevert ? `
+                <button class="btn-icon btn-revert" onclick="showRevertModal(${log.log_id})" title="Revert this action">
+                  <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/>
+                    <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/>
+                  </svg>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+          
+          ${isReverted ? `
+            <div class="log-reverted-banner">
+              ⚠️ This action was reverted on ${formatDetailedTime(log.reverted_at)}
+            </div>
+          ` : ''}
+          
+          ${hasDetails ? `
+            <div class="log-details-panel" id="logDetails${log.log_id}" style="display: none;">
+              <div class="log-detail-grid">
+                <div class="log-detail-item">
+                  <strong>Log ID:</strong> #${log.log_id}
+                </div>
+                <div class="log-detail-item">
+                  <strong>Action Type:</strong> 
+                  <span class="badge badge-${getActionBadgeClass(log.action || 'info')}">${escapeHtml(log.action || 'info')}</span>
+                </div>
+                ${log.target_table ? `
+                  <div class="log-detail-item">
+                    <strong>Target Table:</strong> ${escapeHtml(log.target_table)}
+                  </div>
+                ` : ''}
+                ${log.target_id ? `
+                  <div class="log-detail-item">
+                    <strong>Target ID:</strong> ${log.target_id}
+                  </div>
+                ` : ''}
+              </div>
+              
+              ${log.old_data ? `
+                <div class="log-data-section">
+                  <strong>📋 Previous Data (Before Change):</strong>
+                  <pre class="log-data-json">${formatJSON(log.old_data)}</pre>
+                </div>
+              ` : ''}
+              
+              ${log.new_data ? `
+                <div class="log-data-section">
+                  <strong>📄 New Data (After Change):</strong>
+                  <pre class="log-data-json">${formatJSON(log.new_data)}</pre>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
         </div>
-        <div class="log-time">${formatTime(log.created_at)}</div>
-      </div>
-    `).join('');
+      `;
+    });
+    
+    content.innerHTML = html;
   } catch (err) {
     console.error('loadLogs error:', err);
+    $('#logsContent').innerHTML = '<div class="empty-state">Error loading logs</div>';
   }
 }
-
-$('#logFilter')?.addEventListener('change', () => loadLogs());
 
 // ==========================================
 // TOURNAMENTS (Full Access)
@@ -871,6 +970,246 @@ async function loadAthletes() {
 // HELPER FUNCTIONS
 // ==========================================
 
+async function loadLogs() {
+  try {
+    const filter = $('#logFilter')?.value || '';
+    const data = await fetchAPI('logs', filter ? { filter } : {});
+    const content = $('#logsContent');
+    
+    if (!data || data.length === 0) {
+      content.innerHTML = '<div class="empty-state">No activity logs found</div>';
+      return;
+    }
+    
+    let html = '';
+    
+    data.forEach(log => {
+      const isReverted = log.reverted_at !== null;
+      const canRevert = log.can_revert == 1 && !isReverted;
+      const hasDetails = log.old_data || log.new_data || log.target_table;
+      
+      html += `
+        <div class="log-card ${isReverted ? 'log-reverted' : ''}" data-log-id="${log.log_id}">
+          <div class="log-header">
+            <div class="log-main-info">
+              <div class="log-icon-wrapper">
+                <div class="log-icon ${log.action || 'info'}">${getActionIcon(log.action || 'info')}</div>
+              </div>
+              <div class="log-details-wrapper">
+                <div class="log-action-text">${escapeHtml(log.description)}</div>
+                <div class="log-metadata">
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/>
+                    </svg>
+                    ${escapeHtml(log.user_name || 'System')}
+                  </span>
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M8.5 5.5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9V5.5z"/>
+                      <path d="M6.5 0a.5.5 0 0 0 0 1H7v1.07a7.001 7.001 0 0 0-3.273 12.474l-.602.602a.5.5 0 0 0 .707.708l.746-.746A6.97 6.97 0 0 0 8 16a6.97 6.97 0 0 0 3.422-.892l.746.746a.5.5 0 0 0 .707-.708l-.601-.602A7.001 7.001 0 0 0 9 2.07V1h.5a.5.5 0 0 0 0-1h-3zm1.038 3.018a6.093 6.093 0 0 1 .924 0 6 6 0 1 1-.924 0zM0 3.5c0 .753.333 1.429.86 1.887A8.035 8.035 0 0 1 4.387 1.86 2.5 2.5 0 0 0 0 3.5zM13.5 1c-.753 0-1.429.333-1.887.86a8.035 8.035 0 0 1 3.527 3.527A2.5 2.5 0 0 0 13.5 1z"/>
+                    </svg>
+                    ${formatDetailedTime(log.created_at)}
+                  </span>
+                  <span class="log-meta-item">
+                    <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16">
+                      <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/>
+                    </svg>
+                    ${escapeHtml(log.module_name)}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="log-actions">
+              ${hasDetails ? `
+                <button class="btn-icon" onclick="toggleLogDetails(${log.log_id})" title="View details">
+                  <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                  </svg>
+                </button>
+              ` : ''}
+              ${canRevert ? `
+                <button class="btn-icon btn-revert" onclick="showRevertModal(${log.log_id})" title="Revert this action">
+                  <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/>
+                    <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/>
+                  </svg>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+          
+          ${isReverted ? `
+            <div class="log-reverted-banner">
+              ⚠️ This action was reverted on ${formatDetailedTime(log.reverted_at)}
+            </div>
+          ` : ''}
+          
+          ${hasDetails ? `
+            <div class="log-details-panel" id="logDetails${log.log_id}" style="display: none;">
+              <div class="log-detail-grid">
+                <div class="log-detail-item">
+                  <strong>Log ID:</strong> #${log.log_id}
+                </div>
+                <div class="log-detail-item">
+                  <strong>Action Type:</strong> 
+                  <span class="badge badge-${getActionBadgeClass(log.action || 'info')}">${escapeHtml(log.action || 'info')}</span>
+                </div>
+                ${log.target_table ? `
+                  <div class="log-detail-item">
+                    <strong>Target Table:</strong> ${escapeHtml(log.target_table)}
+                  </div>
+                ` : ''}
+                ${log.target_id ? `
+                  <div class="log-detail-item">
+                    <strong>Target ID:</strong> ${log.target_id}
+                  </div>
+                ` : ''}
+              </div>
+              
+              ${log.old_data ? `
+                <div class="log-data-section">
+                  <strong>📋 Previous Data (Before Change):</strong>
+                  <pre class="log-data-json">${formatJSON(log.old_data)}</pre>
+                </div>
+              ` : ''}
+              
+              ${log.new_data ? `
+                <div class="log-data-section">
+                  <strong>📄 New Data (After Change):</strong>
+                  <pre class="log-data-json">${formatJSON(log.new_data)}</pre>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    });
+    
+    content.innerHTML = html;
+  } catch (err) {
+    console.error('loadLogs error:', err);
+    $('#logsContent').innerHTML = '<div class="empty-state">Error loading logs</div>';
+  }
+}
+
+// ==========================================
+// HELPER FUNCTIONS - Add to admin.js
+// ==========================================
+
+function toggleLogDetails(logId) {
+  const panel = $(`#logDetails${logId}`);
+  const btn = event.target.closest('button');
+  
+  if (panel) {
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    
+    // Rotate icon
+    if (btn) {
+      const svg = btn.querySelector('svg');
+      if (svg) {
+        svg.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        svg.style.transition = 'transform 0.2s';
+      }
+    }
+  }
+}
+
+function showRevertModal(logId) {
+  const modalHTML = `
+    <div class="modal active" id="revertModal">
+      <div class="modal-content modal-sm">
+        <div class="modal-icon" style="color: #d97706; font-size: 48px;">⚠️</div>
+        <h3>Revert This Action?</h3>
+        <p style="margin-bottom: 16px;">This will undo the logged action and restore the previous state.</p>
+        <p style="color: #dc2626; font-weight: 600; font-size: 12px;">⚠️ Warning: This operation cannot be undone!</p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeModal('revertModal')">Cancel</button>
+          <button class="btn" style="background: #d97706; color: white; border-color: #d97706;" 
+                  onclick="revertAction(${logId})">
+            <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/>
+            </svg>
+            Revert Action
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  $('#modalContainer').innerHTML = modalHTML;
+}
+
+async function revertAction(logId) {
+  try {
+    const result = await fetchAPI('revert_action', { log_id: logId }, 'POST');
+    
+    if (result && result.ok) {
+      closeModal('revertModal');
+      alert('✅ Action reverted successfully!');
+      loadLogs(); // Reload logs to show the revert
+    } else {
+      alert('❌ ' + (result?.error || 'Failed to revert action'));
+    }
+  } catch (err) {
+    console.error('Revert error:', err);
+    alert('❌ Error reverting action');
+  }
+}
+
+function formatDetailedTime(timestamp) {
+  if (!timestamp) return 'N/A';
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  
+  // Relative time
+  let relative = '';
+  if (diff < 60) relative = 'Just now';
+  else if (diff < 3600) relative = Math.floor(diff / 60) + ' min ago';
+  else if (diff < 86400) relative = Math.floor(diff / 3600) + ' hours ago';
+  else if (diff < 604800) relative = Math.floor(diff / 86400) + ' days ago';
+  else relative = date.toLocaleDateString();
+  
+  // Full timestamp
+  const full = date.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  
+  return `<span title="${full}">${relative}</span>`;
+}
+
+function getActionBadgeClass(action) {
+  const classes = {
+    'create': 'success',
+    'update': 'info',
+    'delete': 'danger',
+    'activate': 'success',
+    'deactivate': 'warning',
+    'login': 'info',
+    'logout': 'secondary',
+    'revert': 'warning'
+  };
+  return classes[action] || 'secondary';
+}
+
+function formatJSON(jsonString) {
+  try {
+    const obj = JSON.parse(jsonString);
+    return JSON.stringify(obj, null, 2);
+  } catch (e) {
+    return jsonString;
+  }
+}
+
+// Update getActionIcon if it doesn't exist in your admin.js
 function getActionIcon(action) {
   const icons = {
     login: '🔐',
@@ -879,7 +1218,9 @@ function getActionIcon(action) {
     update: '✏️',
     delete: '🗑️',
     activate: '✅',
-    deactivate: '❌'
+    deactivate: '❌',
+    revert: '↩️',
+    info: '📝'
   };
   return icons[action] || '📝';
 }

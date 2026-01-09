@@ -98,7 +98,7 @@ function loadViewData(view) {
     case 'training': loadTrainingSchedule(); break;
     case 'attendance': loadAttendance(); break;
     case 'programs': loadPrograms(); break;
-    case 'rankings': break; // Loaded on team selection
+    case 'rankings': loadRankingsView(); break; // Changed this line
   }
 }
 
@@ -176,16 +176,26 @@ function renderTeamCard(team) {
 }
 
 function populateTeamFilters(teams) {
+  // Populate team filter for players view
   const filterSelect = $('#teamFilterSelect');
-  if (teams && teams.length > 0) {
-    filterSelect.innerHTML = '<option value="">All Teams</option>' + 
-      teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+  if (filterSelect) {
+    if (teams && teams.length > 0) {
+      filterSelect.innerHTML = '<option value="">All Teams</option>' + 
+        teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+    } else {
+      filterSelect.innerHTML = '<option value="">No Teams Available</option>';
+    }
   }
   
+  // Populate rankings team select
   const rankingsSelect = $('#rankingsTeamSelect');
-  if (teams && teams.length > 0) {
-    rankingsSelect.innerHTML = '<option value="">-- Select Team --</option>' + 
-      teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+  if (rankingsSelect) {
+    if (teams && teams.length > 0) {
+      rankingsSelect.innerHTML = '<option value="">-- Select Team --</option>' + 
+        teams.map(t => `<option value="${t.team_id}">${escapeHtml(t.team_name)}</option>`).join('');
+    } else {
+      rankingsSelect.innerHTML = '<option value="">-- No Teams Available --</option>';
+    }
   }
 }
 
@@ -386,44 +396,75 @@ async function loadRankings(teamId) {
     }
     
     if (data.length === 0) {
-      content.innerHTML = '<div class="empty-state">No rankings available for this team</div>';
+      content.innerHTML = '<div class="empty-state">No ranking data available for this team yet</div>';
     } else {
-      content.innerHTML = data.map((r, idx) => renderRankingCard(r, idx + 1)).join('');
+      // Show only the team's own ranking
+      content.innerHTML = data.map(r => renderTeamRankingCard(r)).join('');
     }
     
-    console.log('✅ Rankings loaded:', data.length);
+    console.log('✅ Rankings loaded for team');
   } catch (err) {
     console.error('❌ loadRankings error:', err);
     $('#rankingsContent').innerHTML = '<div class="empty-state">Error loading rankings</div>';
   }
 }
 
-function renderRankingCard(ranking, position) {
-  let positionClass = '';
-  if (position === 1) positionClass = 'gold';
-  else if (position === 2) positionClass = 'silver';
-  else if (position === 3) positionClass = 'bronze';
-  
+function renderTeamRankingCard(ranking) {
   const wins = ranking.no_win || 0;
   const losses = ranking.no_loss || 0;
   const draws = ranking.no_draw || 0;
+  const gamesPlayed = ranking.no_games_played || 0;
   const record = `${wins}W - ${losses}L${draws > 0 ? ' - ' + draws + 'D' : ''}`;
   
   const gold = ranking.no_gold || 0;
   const silver = ranking.no_silver || 0;
   const bronze = ranking.no_bronze || 0;
-  const medals = `🥇${gold} 🥈${silver} 🥉${bronze}`;
+  const totalMedals = gold + silver + bronze;
   
   return `
-    <div class="ranking-card">
-      <div class="ranking-position ${positionClass}">${position}</div>
-      <div class="ranking-info">
-        <div class="ranking-team">${escapeHtml(ranking.team_name)}</div>
-        <div class="ranking-sport">${escapeHtml(ranking.sports_name)}</div>
+    <div class="data-card" style="margin-bottom: 20px;">
+      <div class="data-card-header">
+        <div class="data-card-title">🏆 ${escapeHtml(ranking.team_name)}</div>
+        <span class="badge active">Your Team</span>
       </div>
-      <div class="ranking-stats">
-        <div class="ranking-record">${record}</div>
-        <div class="ranking-medals">${medals}</div>
+      <div class="data-card-meta">
+        <strong>Sport:</strong> ${escapeHtml(ranking.sports_name)}
+      </div>
+      <div class="data-card-content" style="margin-top: 16px;">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+          <div>
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px;">Games Played</div>
+            <div style="font-size: 24px; font-weight: 700; color: var(--primary);">${gamesPlayed}</div>
+          </div>
+          <div>
+            <div style="font-size: 13px; color: var(--muted); margin-bottom: 4px;">Record</div>
+            <div style="font-size: 18px; font-weight: 700; color: var(--success);">${record}</div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);">
+          <div style="font-size: 13px; color: var(--muted); margin-bottom: 12px; font-weight: 600;">Medal Count</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
+              <div style="font-size: 24px;">🥇</div>
+              <div style="font-size: 20px; font-weight: 700; color: #92400e;">${gold}</div>
+              <div style="font-size: 11px; color: #92400e; margin-top: 4px;">Gold</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
+              <div style="font-size: 24px;">🥈</div>
+              <div style="font-size: 20px; font-weight: 700; color: #475569;">${silver}</div>
+              <div style="font-size: 11px; color: #475569; margin-top: 4px;">Silver</div>
+            </div>
+            <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #fed7aa, #fdba74); border-radius: 8px;">
+              <div style="font-size: 24px;">🥉</div>
+              <div style="font-size: 20px; font-weight: 700; color: #9a3412;">${bronze}</div>
+              <div style="font-size: 11px; color: #9a3412; margin-top: 4px;">Bronze</div>
+            </div>
+          </div>
+          <div style="margin-top: 12px; text-align: center; font-size: 14px; color: var(--muted);">
+            <strong style="color: var(--text);">Total Medals: ${totalMedals}</strong>
+          </div>
+        </div>
       </div>
     </div>
   `;

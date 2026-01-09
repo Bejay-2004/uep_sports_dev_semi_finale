@@ -1,5 +1,5 @@
 <?php
-// spectator/api.php - FIXED VERSION
+// spectator/api.php - COMPLETE FIXED VERSION
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -9,7 +9,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../auth/guard.php';
 
-// Accept 'Spectator' role
+// Accept 'Spectator' role (case-insensitive)
 $user_role = $_SESSION['user']['user_role'] ?? '';
 $normalized_role = strtolower(str_replace(['/', ' '], '_', trim($user_role)));
 
@@ -54,7 +54,7 @@ if ($action === 'tournaments') {
     ");
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
-    http_response_code(500);
+    error_log("TOURNAMENTS ERROR: " . $e->getMessage());
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -84,7 +84,7 @@ if ($action === 'sports') {
     ");
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
-    http_response_code(500);
+    error_log("SPORTS ERROR: " . $e->getMessage());
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -108,6 +108,8 @@ if ($action === 'matches') {
         m.sports_id,
         m.tour_id,
         m.sports_type,
+        m.winner_team_id,
+        m.winner_athlete_id,
         s.sports_name,
         tour.tour_name,
         tour.school_year,
@@ -118,17 +120,18 @@ if ($action === 'matches') {
         v.venue_name,
         v.venue_building,
         v.venue_room,
-        m.winner_id,
         tw.team_name AS winner_name,
         CONCAT(ump.f_name, ' ', ump.l_name) AS umpire_name,
-        CONCAT(sm.f_name, ' ', sm.l_name) AS sports_manager_name
+        CONCAT(sm.f_name, ' ', sm.l_name) AS sports_manager_name,
+        CONCAT(wa.f_name, ' ', wa.l_name) AS winner_athlete_name
       FROM tbl_match m
       JOIN tbl_sports s ON s.sports_id = m.sports_id
       LEFT JOIN tbl_tournament tour ON tour.tour_id = m.tour_id
       LEFT JOIN tbl_team ta ON ta.team_id = m.team_a_id
       LEFT JOIN tbl_team tb ON tb.team_id = m.team_b_id
       LEFT JOIN tbl_game_venue v ON v.venue_id = m.venue_id
-      LEFT JOIN tbl_team tw ON tw.team_id = m.winner_id
+      LEFT JOIN tbl_team tw ON tw.team_id = m.winner_team_id
+      LEFT JOIN tbl_person wa ON wa.person_id = m.winner_athlete_id
       LEFT JOIN tbl_person ump ON ump.person_id = m.match_umpire_id
       LEFT JOIN tbl_person sm ON sm.person_id = m.match_sports_manager_id
       WHERE 1=1
@@ -136,13 +139,11 @@ if ($action === 'matches') {
     
     $params = [];
     
-    // Filter by tournament
     if ($tour_id) {
       $sql .= " AND m.tour_id = :tour_id";
       $params['tour_id'] = $tour_id;
     }
     
-    // Filter by sport
     if ($sport_id) {
       $sql .= " AND m.sports_id = :sport_id";
       $params['sport_id'] = $sport_id;
@@ -156,6 +157,7 @@ if ($action === 'matches') {
     
     // Get scores for each match
     foreach ($matches as &$match) {
+      // Get competitor scores
       $score_stmt = $pdo->prepare("
         SELECT 
           cs.team_id,
@@ -174,29 +176,33 @@ if ($action === 'matches') {
       $score_stmt->execute(['match_id' => $match['match_id']]);
       $match['scores'] = $score_stmt->fetchAll(PDO::FETCH_ASSOC);
       
-      // Calculate team scores if team sport
+      // Calculate team scores for team sports
+      $match['team_a_score'] = null;
+      $match['team_b_score'] = null;
+      
       if ($match['sports_type'] === 'team' && count($match['scores']) > 0) {
-        $team_a_score = 0;
-        $team_b_score = 0;
+        $team_a_total = 0;
+        $team_b_total = 0;
+        
         foreach ($match['scores'] as $score) {
           if ($score['team_id'] == $match['team_a_id']) {
-            $team_a_score += (float)$score['score'];
+            $team_a_total += (float)$score['score'];
           } elseif ($score['team_id'] == $match['team_b_id']) {
-            $team_b_score += (float)$score['score'];
+            $team_b_total += (float)$score['score'];
           }
         }
-        $match['team_a_score'] = $team_a_score;
-        $match['team_b_score'] = $team_b_score;
-      } else {
-        $match['team_a_score'] = null;
-        $match['team_b_score'] = null;
+        
+        $match['team_a_score'] = $team_a_total;
+        $match['team_b_score'] = $team_b_total;
       }
+      
+      // Set winner_id for backward compatibility
+      $match['winner_id'] = $match['winner_team_id'] ?? $match['winner_athlete_id'] ?? null;
     }
     
     out($matches);
   } catch (PDOException $e) {
     error_log("MATCHES ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -254,7 +260,6 @@ if ($action === 'standings') {
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     error_log("STANDINGS ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -301,7 +306,6 @@ if ($action === 'teams') {
     
     $params = [];
     
-    // Filter by sport
     if ($sport_id) {
       $sql .= " AND st.sports_id = :sport_id";
       $params['sport_id'] = $sport_id;
@@ -309,8 +313,8 @@ if ($action === 'teams') {
     
     $sql .= " GROUP BY t.team_id, t.team_name, t.school_id, sch.school_name,
                        s.sports_id, s.sports_name, s.team_individual,
-                       coach.f_name, coach.l_name, asst.f_name, asst.l_name";
-    $sql .= " ORDER BY s.sports_name, t.team_name";
+                       coach.f_name, coach.l_name, asst.f_name, asst.l_name
+              ORDER BY s.sports_name, t.team_name";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -318,7 +322,6 @@ if ($action === 'teams') {
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     error_log("TEAMS ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -356,18 +359,16 @@ if ($action === 'players') {
       LEFT JOIN tbl_tournament tour ON tour.tour_id = ta.tour_id
       WHERE p.is_active = 1
         AND ta.is_active = 1
-        AND p.role_type IN ('athlete/player', 'athlete', 'player')
+        AND p.role_type IN ('athlete', 'trainee')
     ";
     
     $params = [];
     
-    // Filter by team
     if ($team_id) {
       $sql .= " AND ta.team_id = :team_id";
       $params['team_id'] = $team_id;
     }
     
-    // Filter by sport
     if ($sport_id) {
       $sql .= " AND ta.sports_id = :sport_id";
       $params['sport_id'] = $sport_id;
@@ -381,7 +382,6 @@ if ($action === 'players') {
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     error_log("PLAYERS ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -429,19 +429,16 @@ if ($action === 'scores') {
     
     $params = [];
     
-    // Filter by match
     if ($match_id) {
       $sql .= " AND cs.match_id = :match_id";
       $params['match_id'] = $match_id;
     }
     
-    // Filter by tournament
     if ($tour_id) {
       $sql .= " AND cs.tour_id = :tour_id";
       $params['tour_id'] = $tour_id;
     }
     
-    // Filter by sport
     if ($sport_id) {
       $sql .= " AND m.sports_id = :sport_id";
       $params['sport_id'] = $sport_id;
@@ -455,7 +452,6 @@ if ($action === 'scores') {
     out($stmt->fetchAll(PDO::FETCH_ASSOC));
   } catch (PDOException $e) {
     error_log("SCORES ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
@@ -487,17 +483,18 @@ if ($action === 'stats') {
     $teams_count = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
     
     out([
-      'tournaments' => $tournaments_count,
-      'sports' => $sports_count,
-      'matches' => $matches_count,
-      'teams' => $teams_count
+      'tournaments' => (int)$tournaments_count,
+      'sports' => (int)$sports_count,
+      'matches' => (int)$matches_count,
+      'teams' => (int)$teams_count
     ]);
   } catch (PDOException $e) {
     error_log("STATS ERROR: " . $e->getMessage());
-    http_response_code(500);
     out(['ok' => false, 'message' => 'Database error', 'error' => $e->getMessage()]);
   }
 }
 
+// No matching action found
 http_response_code(404);
 out(['ok' => false, 'message' => 'Unknown action: ' . $action]);
+?>
